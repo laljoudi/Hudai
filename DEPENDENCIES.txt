@@ -1,0 +1,38 @@
+GP_Hudai - Dependencies (Reference)
+=================================
+
+Selected Now (added to pubspec.yaml)
+- camera: ^0.11.2+1
+  تشغيل الكاميرا والبث المباشر.
+- geolocator: ^14.0.2
+  جلب موقع المستخدم وحساب المسافات.
+- geocoding: ^4.0.0
+  تحويل الإحداثيات إلى اسم مكان (اختياري لكنه مطلوب هنا).
+- permission_handler: ^12.0.1
+  إدارة صلاحيات الكاميرا والموقع.
+- shared_preferences: ^2.5.3
+  حفظ رقم الطوارئ واللغة والثيم محليًا.
+- url_launcher: ^6.3.2
+  فتح تطبيق الهاتف للاتصال على iOS (tel:).
+- flutter_phone_direct_caller: ^2.2.1
+  اتصال مباشر بالطوارئ على Android (يتطلب CALL_PHONE).
+- wakelock_plus: ^1.4.0
+  منع إطفاء الشاشة أثناء تشغيل الكاميرا.
+
+Later (when YOLO API is ready)
+- http (or dio)
+  إرسال الصور واستقبال نتائج الكشف من السيرفر.
+
+Audio (TBD)
+- just_audio OR audioplayers
+  تشغيل ملفات صوتية محلية أو من API.
+- TTS provider SDK (if chosen)
+  توليد الصوت عبر الإنترنت (سيُحدد لاحقًا).
+
+Optional / Future
+- tflite_flutter + tflite_flutter_helper
+  تشغيل النموذج محليًا (إذا قررت on-device لاحقًا).
+
+Notes
+- Android: add CALL_PHONE permission if using direct caller.
+- iOS: no direct call; must open phone app via tel:.
