@@ -1,64 +1,80 @@
 import 'package:flutter/material.dart';
-
-class AppColors {
-  
-  static const Color primary = Color(00192F); // أزرق غامق
-  static const Color secondary = Color(2F4156); // تركواز
-  static const Color background = Color(0xFFF5F7FA); // خلفية فاتحة
-  static const Color surface = Colors.white;
-  static const Color error = Color(0xFFD32F2F);
-
-  // ألوان نصوص
-  static const Color textPrimary = Color(0xFF212121);
-  static const Color textSecondary = Color(0xFF757575);
-}
+import 'package:gp_hudai/core/constants/colors.dart';
 
 class AppTheme {
-  static ThemeData lightTheme = ThemeData(
-    useMaterial3: true,
-    scaffoldBackgroundColor: AppColors.background,
-    
-    colorScheme: ColorScheme(
-      brightness: Brightness.light,
-      primary: AppColors.primary,
-      onPrimary: Colors.white,
-      secondary: AppColors.secondary,
-      onSecondary: Colors.white,
-      error: AppColors.error,
-      onError: Colors.white,
-      background: AppColors.background,
-      onBackground: AppColors.textPrimary,
-      surface: AppColors.surface,
-      onSurface: AppColors.textPrimary,
-    ),
+  // TODO: Replace with your font family name (must match pubspec.yaml)
+  static const String fontFamily = 'REPLACE_ME';
 
-    appBarTheme: const AppBarTheme(
-      backgroundColor: AppColors.primary,
-      foregroundColor: Colors.white,
-      centerTitle: true,
-    ),
-
-    elevatedButtonTheme: ElevatedButtonThemeData(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(
+  static ThemeData light() {
+    final base = ThemeData.light(useMaterial3: true);
+    return base.copyWith(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: AppColors.primary,
+        brightness: Brightness.light,
+      ),
+      scaffoldBackgroundColor: AppColors.backgroundLight,
+      textTheme: base.textTheme.apply(
+        fontFamily: fontFamily,
+        bodyColor: AppColors.textLight,
+        displayColor: AppColors.textLight,
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: AppColors.backgroundLight,
+        foregroundColor: AppColors.textLight,
+        elevation: 0,
+      ),
+      iconTheme: const IconThemeData(color: AppColors.textLight),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: AppColors.textLight,
+          minimumSize: const Size(56, 56),
+          shape: const StadiumBorder(),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        border: OutlineInputBorder(
+          borderSide: const BorderSide(color: AppColors.outline),
           borderRadius: BorderRadius.circular(12),
         ),
       ),
-    ),
+    );
+  }
 
-    textTheme: const TextTheme(
-      headlineMedium: TextStyle(
-        fontSize: 22,
-        fontWeight: FontWeight.bold,
-        color: AppColors.textPrimary,
+  static ThemeData dark() {
+    final base = ThemeData.dark(useMaterial3: true);
+    return base.copyWith(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: AppColors.primaryDark,
+        brightness: Brightness.dark,
       ),
-      bodyMedium: TextStyle(
-        fontSize: 16,
-        color: AppColors.textSecondary,
+      scaffoldBackgroundColor: AppColors.backgroundDark,
+      textTheme: base.textTheme.apply(
+        fontFamily: fontFamily,
+        bodyColor: AppColors.textDark,
+        displayColor: AppColors.textDark,
       ),
-    ),
-  );
+      appBarTheme: const AppBarTheme(
+        backgroundColor: AppColors.backgroundDark,
+        foregroundColor: AppColors.textDark,
+        elevation: 0,
+      ),
+      iconTheme: const IconThemeData(color: AppColors.textDark),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primaryDark,
+          foregroundColor: AppColors.textDark,
+          minimumSize: const Size(56, 56),
+          shape: const StadiumBorder(),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        border: OutlineInputBorder(
+          borderSide: const BorderSide(color: AppColors.outline),
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
 }
+
