@@ -1,3 +1,4 @@
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:gp_hudai/app/app_routes.dart';
@@ -309,3 +310,4 @@ class NotchedCapsuleClipper extends CustomClipper<Path> {
   @override
   bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }
+515b0f7 (Update camera UI and location feature)
