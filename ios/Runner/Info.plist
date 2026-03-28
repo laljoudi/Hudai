@@ -45,5 +45,12 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	
+	<key>NSCameraUsageDescription</key>
+<string>نحتاج الكاميرا لعرض المشهد.</string>
+
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>نحتاج موقعك لمعرفة هل أنت داخل المنطقة.</string>
+
 </dict>
 </plist>
