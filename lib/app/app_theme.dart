@@ -18,7 +18,6 @@ class AppTheme {
         error: AppColors.danger,
       ),
       textTheme: base.textTheme.apply(
-        fontFamily: 'Cairo',
         bodyColor: Colors.black,
         displayColor: Colors.black,
       ),
@@ -36,8 +35,8 @@ class AppTheme {
           shape: const StadiumBorder(),
         ),
       ),
-      bottomAppBarTheme: const BottomAppBarTheme(
-        color: AppColors.footer,
+        bottomAppBarTheme: const BottomAppBarThemeData(
+        //color: AppColors.footer,
       ),
     );
   }

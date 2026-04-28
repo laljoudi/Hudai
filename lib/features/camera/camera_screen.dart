@@ -1,48 +1,91 @@
-
+import 'dart:ui';
+ 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:gp_hudai/app/app_routes.dart';
-import 'package:gp_hudai/core/constants/app_strings.dart';
-import 'package:gp_hudai/core/constants/colors.dart';
 import 'package:gp_hudai/core/constants/location_constants.dart';
 import 'package:gp_hudai/core/services/location_service.dart';
 import 'package:gp_hudai/core/services/permission_service.dart';
-import 'package:gp_hudai/core/services/tts_service.dart';
-
-// اجعليها true لتفعيل وضع تجريبي بدون كاميرا.
+import 'package:gp_hudai/core/storage/prefs.dart';
+ 
 const bool kForceMockCamera = false;
-
+ 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Audio file paths used by this screen.
+//  Drop the MP3 files at these paths and they play automatically.
+// ─────────────────────────────────────────────────────────────────────────────
+class _CameraAudio {
+  // Voice intro that explains the screen layout (plays once on first visit)
+  static const String intro = 'assets/audio/camera/camera_intro.mp3';
+ 
+  // Location feature audio
+  static const String insideArafat     = 'assets/audio/location/inside_arafat.mp3';
+  static const String outsideArafat    = 'assets/audio/location/outside_arafat.mp3';
+  static const String permissionDenied = 'assets/audio/location/permission_denied.mp3';
+  static const String gpsDisabled      = 'assets/audio/location/gps_disabled.mp3';
+  static const String locationError    = 'assets/audio/location/location_error.mp3';
+}
+ 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
-
+ 
   @override
   State<CameraScreen> createState() => _CameraScreenState();
 }
-
+ 
 class _CameraScreenState extends State<CameraScreen> {
   CameraController? _controller;
   Future<void>? _initializeFuture;
   String? _cameraError;
   bool _useMockCamera = false;
-
-  final _permissionService = const PermissionService();
-  final _locationService = const LocationService();
-  final _ttsService = const TtsService();
-
+ 
+  final _permissionService     = const PermissionService();
+  final _locationService       = const LocationService();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+ 
   bool _locationBusy = false;
-
+ 
   @override
   void initState() {
     super.initState();
     _initCamera();
+    _playIntroOnce();
   }
-
+ 
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    _controller?.dispose();
+    super.dispose();
+  }
+ 
+  // ─────────────────────────────────────────────────────────────────────────
+  //  Voice intro — plays only on first visit.
+  //  Uses Prefs to remember if the user has already heard it.
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<void> _playIntroOnce() async {
+    // final hasHeard = await Prefs.hasHeardCameraIntro();
+   //  if (hasHeard) return;
+ 
+    await Future.delayed(const Duration(milliseconds: 800));
+    await _playAudio(_CameraAudio.intro);
+    await Prefs.markCameraIntroHeard();
+  }
+ 
+  Future<void> _replayIntro() async {
+    await _playAudio(_CameraAudio.intro);
+  }
+ 
+  // ─────────────────────────────────────────────────────────────────────────
+  //  Camera lifecycle
+  // ─────────────────────────────────────────────────────────────────────────
   Future<void> _initCamera() async {
     if (kForceMockCamera) {
       if (mounted) setState(() => _useMockCamera = true);
       return;
     }
-
+ 
     try {
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
@@ -52,18 +95,19 @@ class _CameraScreenState extends State<CameraScreen> {
         });
         return;
       }
-
+ 
       final back = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
-
+ 
       _controller = CameraController(
         back,
-        ResolutionPreset.high,
+        ResolutionPreset.medium,
         enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420,
       );
-
+ 
       _initializeFuture = _controller!.initialize();
       if (mounted) setState(() {});
     } catch (_) {
@@ -75,239 +119,327 @@ class _CameraScreenState extends State<CameraScreen> {
       }
     }
   }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
+ 
+  // ─────────────────────────────────────────────────────────────────────────
+  //  Audio playback helper
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<void> _playAudio(String path) async {
+  debugPrint('🔊 STEP 1: trying to play $path');
+  try {
+    // audioplayers expects path WITHOUT "assets/" prefix
+    final assetPath = path.replaceFirst('assets/', '');
+    await _audioPlayer.play(AssetSource(assetPath));
+    debugPrint('🔊 STEP 2: play() returned');
+  } catch (e) {
+    debugPrint('🔊 ERROR: $e');
   }
-
-  Future<void> _handleLocationTap() async {
+}
+  // ─────────────────────────────────────────────────────────────────────────
+  //  Quadrant actions
+  // ─────────────────────────────────────────────────────────────────────────
+  void _onSettingsTap() {
+    Navigator.pushNamed(context, AppRoutes.settings);
+  }
+ 
+  void _onEmergencyTap() {
+    // TODO: PhoneService().callEmergency() — your colleague's task
+  }
+ 
+  Future<void> _onLocationTap() async {
     if (_locationBusy) return;
-
     setState(() => _locationBusy = true);
-
+ 
     try {
       final granted = await _permissionService.ensureLocationPermission();
       if (!granted) {
-        await _ttsService.speak(AppStrings.locationPermissionDenied);
+        await _playAudio(_CameraAudio.permissionDenied);
         return;
       }
-
+ 
       final position = await _locationService.getCurrentPosition();
       debugPrint('GPS: ${position.latitude}, ${position.longitude}');
-
+ 
       final inside = _locationService.isInsideCircle(
         position,
         LocationConstants.arafatZone,
       );
-
-      final message = inside
-          ? AppStrings.locationInsideArafat
-          : AppStrings.locationOutside;
-
-      await _ttsService.speak(message);
+ 
+      await _playAudio(
+        inside ? _CameraAudio.insideArafat : _CameraAudio.outsideArafat,
+      );
     } on LocationServiceDisabledException {
-      await _ttsService.speak(AppStrings.locationServiceDisabled);
+      await _playAudio(_CameraAudio.gpsDisabled);
     } catch (_) {
-      await _ttsService.speak(AppStrings.locationError);
+      await _playAudio(_CameraAudio.locationError);
     } finally {
-      if (mounted) {
-        setState(() => _locationBusy = false);
-      }
+      if (mounted) setState(() => _locationBusy = false);
     }
   }
-
+  
+ 
+  // ─────────────────────────────────────────────────────────────────────────
+  //  Build
+  // ─────────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: const Color(0xFF030A20),
       body: Stack(
         fit: StackFit.expand,
         children: [
+          // Layer 0 — Camera feed
           _buildCamera(),
-
-          // Header (Emergency + Settings)
+ 
+          // Layer 1 — 4 invisible quadrant tap zones (entire screen)
+          Positioned.fill(child: _buildQuadrants()),
+ 
+          // Layer 2 — Visual glassy header (icons appear in top corners)
           SafeArea(
             child: Align(
               alignment: Alignment.topCenter,
-              child: Container(
-                margin: const EdgeInsets.all(16),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                height: 60,
-                decoration: BoxDecoration(
-                  gradient: AppColors.header,
-                  borderRadius: BorderRadius.circular(40),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 8,
-                      offset: Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    GestureDetector(
-                      onLongPress: () {
-                        // TODO: اتصال طوارئ
-                      },
-                      child: Icon(
-                        Icons.call,
-                        color: AppColors.button,
-                        size: 28,
-                      ),
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.settings,
-                        color: AppColors.button,
-                      ),
-                      onPressed: () {
-                        Navigator.pushNamed(context, AppRoutes.settings);
-                      },
-                    ),
-                  ],
-                ),
-              ),
+              child: _buildGlassyHeader(),
             ),
           ),
-
-          // Footer (Notched capsule)
+ 
+          // Layer 3 — Visual glassy footer (icons appear in bottom corners)
           Align(
             alignment: Alignment.bottomCenter,
-            child: ClipPath(
-              clipper: NotchedCapsuleClipper(),
-              child: Container(
-                height: 100,
-                decoration: BoxDecoration(
-                  gradient: AppColors.footer,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 28),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        icon: Icon(
-                          Icons.replay,
-                          color: AppColors.button,
-                          size: 30,
-                        ),
-                        onPressed: () {
-                          // TODO: إعادة آخر جملة
-                        },
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          Icons.location_on,
-                          color: AppColors.button,
-                          size: 30,
-                        ),
-                        onPressed: _handleLocationTap,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            child: _buildGlassyFooter(),
           ),
         ],
       ),
     );
   }
-
-  Widget _buildCamera() {
-    if (_useMockCamera) {
-      return _buildMockCamera();
-    }
-
-    if (_initializeFuture == null || _controller == null) {
-      return const SizedBox.expand();
-    }
-
-    return FutureBuilder<void>(
-      future: _initializeFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.done) {
-          return CameraPreview(_controller!);
-        }
-        return const SizedBox.expand();
-      },
+ 
+  // ─────────────────────────────────────────────────────────────────────────
+  //  Quadrant tap zones — invisible, cover entire screen
+  //  Top-left      = Settings
+  //  Top-right     = Emergency
+  //  Bottom-left   = Replay intro
+  //  Bottom-right  = Location
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildQuadrants() {
+    return Column(
+      children: [
+        Expanded(
+          child: Row(
+            children: [
+              Expanded(child: _quadrant(onTap: _onSettingsTap)),
+              Expanded(child: _quadrant(onTap: _onEmergencyTap)),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Row(
+            children: [
+              Expanded(child: _quadrant(onTap: _replayIntro)),
+              Expanded(child: _quadrant(onTap: _onLocationTap)),
+            ],
+          ),
+        ),
+      ],
     );
   }
-
-  Widget _buildMockCamera() {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF0F1720), Color(0xFF1B2430)],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-      ),
-      child: Align(
-        alignment: Alignment.center,
-        child: Text(
-          _cameraError ?? 'وضع تجريبي بدون كاميرا',
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 14,
+ 
+  Widget _quadrant({required VoidCallback onTap}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: onTap,
+      child: const SizedBox.expand(),
+    );
+  }
+ 
+  // ─────────────────────────────────────────────────────────────────────────
+  //  Glassy header — top capsule with Settings (left) + Emergency (right)
+  //  IgnorePointer = lets taps pass through to the quadrants behind
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildGlassyHeader() {
+    return IgnorePointer(
+      child: Container(
+        margin:  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        height:  64,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(32),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+            child: Container(
+              decoration: BoxDecoration(
+                color:        Colors.white.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.20),
+                  width: 1.0,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 22),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: const [
+                  _GlassyIconBadge(icon: Icons.settings),
+                  _GlassyIconBadge(icon: Icons.call),
+                ],
+              ),
+            ),
           ),
         ),
       ),
     );
   }
-}
-
-class NotchedCapsuleClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    final r = size.height / 2; // حواف دائرية للكبسولة
-    final dipDepth = size.height * 0.55; // عمق النزول
-    final dipWidth = size.width * 0.55; // عرض النزول
-
-    final left = (size.width - dipWidth) / 2;
-    final right = (size.width + dipWidth) / 2;
-    final c = dipWidth * 0.40; // تحكم بنعومة المنحنى
-
-    final path = Path();
-
-    // زوايا الكبسولة
-    path.moveTo(0, r);
-    path.quadraticBezierTo(0, 0, r, 0);
-
-    // خط علوي حتى بداية النزول
-    path.lineTo(left, 0);
-
-    // نزول ناعم شبه دائري
-    path.cubicTo(
-      left + c, 0,
-      size.width / 2 - c, dipDepth,
-      size.width / 2, dipDepth,
+ 
+  // ─────────────────────────────────────────────────────────────────────────
+  //  Glassy footer — bottom capsule with Replay (left) + Location (right)
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildGlassyFooter() {
+    return IgnorePointer(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        height: 76,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(38),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+            child: Container(
+              decoration: BoxDecoration(
+                color:        Colors.white.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(38),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.20),
+                  width: 1.0,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const _GlassyIconBadge(icon: Icons.replay),
+                  _locationBusy
+                      ? const SizedBox(
+                          width: 24, height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.4,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const _GlassyIconBadge(icon: Icons.location_on),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
-    path.cubicTo(
-      size.width / 2 + c, dipDepth,
-      right - c, 0,
-      right, 0,
-    );
-
-    // خط علوي حتى الزاوية اليمنى
-    path.lineTo(size.width - r, 0);
-
-    // زوايا الكبسولة
-    path.quadraticBezierTo(size.width, 0, size.width, r);
-    path.lineTo(size.width, size.height - r);
-    path.quadraticBezierTo(size.width, size.height, size.width - r, size.height);
-    path.lineTo(r, size.height);
-    path.quadraticBezierTo(0, size.height, 0, size.height - r);
-
-    path.close();
-    return path;
   }
-
-  @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+ 
+  // ─────────────────────────────────────────────────────────────────────────
+  //  Camera feed
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildCamera() {
+    if (_useMockCamera) return _buildMockCamera();
+ 
+    if (_initializeFuture == null || _controller == null) {
+      return const ColoredBox(color: Color(0xFF030A20));
+    }
+ 
+    return FutureBuilder<void>(
+      future: _initializeFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const ColoredBox(color: Color(0xFF030A20));
+        }
+ 
+        final size      = MediaQuery.sizeOf(context);
+        final camAspect = _controller!.value.aspectRatio;
+ 
+        return OverflowBox(
+          maxWidth:  double.infinity,
+          maxHeight: double.infinity,
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width:  size.width,
+              height: size.width / camAspect,
+              child:  CameraPreview(_controller!),
+            ),
+          ),
+        );
+      },
+    );
+  }
+ 
+  Widget _buildMockCamera() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment(0.0, 0.0),
+          radius: 1.0,
+          colors: [
+            Color(0xFF1A3A8A),
+            Color(0xFF0E2360),
+            Color(0xFF071540),
+            Color(0xFF030A20),
+          ],
+          stops: [0.0, 0.30, 0.65, 1.0],
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.videocam_off, color: Colors.white38, size: 52),
+            const SizedBox(height: 14),
+            Text(
+              _cameraError ?? 'وضع تجريبي بدون كاميرا',
+              style: const TextStyle(color: Colors.white60, fontSize: 15),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
-515b0f7 (Update camera UI and location feature)
+ 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Glassy icon badge — small frosted circular icon
+// ─────────────────────────────────────────────────────────────────────────────
+ 
+class _GlassyIconBadge extends StatelessWidget {
+  const _GlassyIconBadge({required this.icon});
+  final IconData icon;
+ 
+  @override
+  Widget build(BuildContext context) {
+    return ClipOval(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          width:  46,
+          height: 46,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end:   Alignment.bottomRight,
+              colors: [
+                Colors.white.withOpacity(0.22),
+                const Color(0xFF40E0FF).withOpacity(0.10),
+              ],
+            ),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.32),
+              width: 1.0,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color:      const Color(0xFF1855FF).withOpacity(0.18),
+                blurRadius: 12,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: Icon(icon, color: Colors.white, size: 22),
+        ),
+      ),
+    );
+  }
+}

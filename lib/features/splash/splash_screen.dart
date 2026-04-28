@@ -13,9 +13,10 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
 
-    Future.delayed(const Duration(seconds: 5), () {
+    // After 3 seconds, move to voice instructions.
+    Future.delayed(const Duration(seconds: 3), () {
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, AppRoutes.camera);
+      Navigator.pushReplacementNamed(context, AppRoutes.voiceInstructions);
     });
   }
 
