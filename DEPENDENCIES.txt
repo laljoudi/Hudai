@@ -18,16 +18,18 @@ Selected Now (added to pubspec.yaml)
   اتصال مباشر بالطوارئ على Android (يتطلب CALL_PHONE).
 - wakelock_plus: ^1.4.0
   منع إطفاء الشاشة أثناء تشغيل الكاميرا.
+  Audio (TBD)
+- audioplayers
+  تشغيل ملفات صوتية محلية  
+- AWS (polly service)
+  for transfers the text into an audio (TTS) (AI generated Audio)
+
 
 Later (when YOLO API is ready)
 - http (or dio)
   إرسال الصور واستقبال نتائج الكشف من السيرفر.
 
-Audio (TBD)
-- just_audio OR audioplayers
-  تشغيل ملفات صوتية محلية أو من API.
-- TTS provider SDK (if chosen)
-  توليد الصوت عبر الإنترنت (سيُحدد لاحقًا).
+
 
 Optional / Future
 - tflite_flutter + tflite_flutter_helper

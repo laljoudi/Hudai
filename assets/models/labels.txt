@@ -1,0 +1,5 @@
+jabal_arafah
+ar_marker
+person
+other_mountains
+crowd

@@ -20,6 +20,8 @@ dependencies:
   flutter_phone_direct_caller: ^2.2.1
   wakelock_plus: ^1.4.0
   audioplayers: ^6.1.0
+  image: ^4.0.17
+  tflite_flutter: ^0.11.0
 
 dev_dependencies:
   flutter_test:
@@ -28,6 +30,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
   assets:
     - assets/audio/
     - assets/audio/camera/

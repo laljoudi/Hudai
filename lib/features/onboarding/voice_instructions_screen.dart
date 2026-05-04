@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:gp_hudai/app/app_routes.dart';
@@ -22,6 +21,7 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
   late final AnimationController _arc2Ctrl;
   late final AnimationController _glowCtrl;
   late final Animation<double>   _glowAnim;
+
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   @override
@@ -32,7 +32,6 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
       vsync: this,
       duration: const Duration(milliseconds: 3200),
     )..repeat(reverse: true);
-
     _pulseAnim = Tween<double>(begin: 0.96, end: 1.04).animate(
       CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
     );
@@ -41,7 +40,6 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
       vsync: this,
       duration: const Duration(seconds: 6),
     )..repeat();
-
     _arc2Ctrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 9),
@@ -51,18 +49,17 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
       vsync: this,
       duration: const Duration(milliseconds: 2400),
     )..repeat(reverse: true);
-
     _glowAnim = Tween<double>(begin: 0.55, end: 1.0).animate(
       CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut),
     );
 
-    // Start welcome audio when screen opens
     _playWelcome();
   }
 
   Future<void> _playWelcome() async {
     try {
-      await _audioPlayer.play(AssetSource('audio/onboarding/welcome_instructions.mp3'));
+      await _audioPlayer.play(
+          AssetSource('audio/onboarding/welcome_instructions.mp3'));
     } catch (e) {
       debugPrint('Audio error: $e');
     }
@@ -93,114 +90,111 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
       backgroundColor: const Color(0xFF030A20),
       body: GestureDetector(
         onTap: _proceed,
-        child: SizedBox.expand(
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-
-              // ── Background radial gradient ─────────────────────────────
-              Positioned.fill(
-                child: const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment(0.0, 0.0),
-                      radius: 1.0,
-                      colors: [
-                        Color(0xFF1A3A8A),
-                        Color(0xFF0E2360),
-                        Color(0xFF071540),
-                        Color(0xFF030A20),
-                      ],
-                      stops: [0.0, 0.30, 0.65, 1.0],
-                    ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Background gradient
+            const Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment(0.0, 0.0),
+                    radius: 1.0,
+                    colors: [
+                      Color(0xFF1A3A8A),
+                      Color(0xFF0E2360),
+                      Color(0xFF071540),
+                      Color(0xFF030A20),
+                    ],
+                    stops: [0.0, 0.30, 0.65, 1.0],
                   ),
                 ),
               ),
+            ),
 
-              // ── Orb + arcs ─────────────────────────────────────────────
-              Center(
-                child: AnimatedBuilder(
-                  animation: Listenable.merge([
-                    _pulseAnim,
-                    _arc1Ctrl,
-                    _arc2Ctrl,
-                    _glowAnim,
-                  ]),
-                  builder: (context, _) {
-                    return Transform.scale(
-                      scale: _pulseAnim.value,
-                      child: SizedBox(
-                        width:  orbDiameter + 90,
-                        height: orbDiameter + 90,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
+            // Orb + arcs
+            Center(
+              child: AnimatedBuilder(
+                animation: Listenable.merge([
+                  _pulseAnim,
+                  _arc1Ctrl,
+                  _arc2Ctrl,
+                  _glowAnim,
+                ]),
+                builder: (context, _) {
+                  return Transform.scale(
+                    scale: _pulseAnim.value,
+                    child: SizedBox(
+                      width:  orbDiameter + 90,
+                      height: orbDiameter + 90,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
 
-                            Opacity(
-                              opacity: _glowAnim.value,
-                              child: Container(
-                                width:  orbDiameter + 80,
-                                height: orbDiameter + 80,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFF1855FF)
-                                          .withOpacity(0.30),
-                                      blurRadius:   90,
-                                      spreadRadius: 20,
-                                    ),
-                                    BoxShadow(
-                                      color: const Color(0xFF00CFFF)
-                                          .withOpacity(0.15),
-                                      blurRadius:   130,
-                                      spreadRadius: 35,
-                                    ),
-                                  ],
-                                ),
+                          // Outer glow bloom
+                          Opacity(
+                            opacity: _glowAnim.value,
+                            child: Container(
+                              width:  orbDiameter + 80,
+                              height: orbDiameter + 80,
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color:        Color(0x4D1855FF),
+                                    blurRadius:   90,
+                                    spreadRadius: 20,
+                                  ),
+                                  BoxShadow(
+                                    color:        Color(0x2600CFFF),
+                                    blurRadius:   130,
+                                    spreadRadius: 35,
+                                  ),
+                                ],
                               ),
                             ),
+                          ),
 
-                            Transform.rotate(
-                              angle: _arc1Ctrl.value * 2 * math.pi,
-                              child: CustomPaint(
-                                size: Size(
-                                    orbDiameter + 46, orbDiameter + 46),
-                                painter: _NeonArcPainter(
-                                  startAngle:  -math.pi * 0.78,
-                                  sweepAngle:  math.pi * 1.12,
-                                  color:       const Color(0xFF40E0FF),
-                                  strokeWidth: 2.2,
-                                  glowWidth:   9.0,
-                                ),
+                          // Arc 1
+                          Transform.rotate(
+                            angle: _arc1Ctrl.value * 2 * math.pi,
+                            child: CustomPaint(
+                              size: Size(orbDiameter + 46, orbDiameter + 46),
+                              painter: _NeonArcPainter(
+                                startAngle:  -math.pi * 0.78,
+                                sweepAngle:  math.pi * 1.12,
+                                color:       const Color(0xFF40E0FF),
+                                strokeWidth: 2.2,
+                                glowWidth:   9.0,
                               ),
                             ),
+                          ),
 
-                            Transform.rotate(
-                              angle: -_arc2Ctrl.value * 2 * math.pi,
-                              child: CustomPaint(
-                                size: Size(
-                                    orbDiameter + 70, orbDiameter + 70),
-                                painter: _NeonArcPainter(
-                                  startAngle:  math.pi * 0.18,
-                                  sweepAngle:  math.pi * 0.82,
-                                  color:       const Color(0xFF70F0FF),
-                                  strokeWidth: 1.6,
-                                  glowWidth:   6.5,
-                                ),
+                          // Arc 2
+                          Transform.rotate(
+                            angle: -_arc2Ctrl.value * 2 * math.pi,
+                            child: CustomPaint(
+                              size: Size(orbDiameter + 70, orbDiameter + 70),
+                              painter: _NeonArcPainter(
+                                startAngle:  math.pi * 0.18,
+                                sweepAngle:  math.pi * 0.82,
+                                color:       const Color(0xFF70F0FF),
+                                strokeWidth: 1.6,
+                                glowWidth:   6.5,
                               ),
                             ),
+                          ),
 
-                            _GlassOrb(diameter: orbDiameter),
-                          ],
-                        ),
+                          // The blue glassy orb
+                          _GlassOrb(diameter: orbDiameter),
+                        ],
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  );
+                },
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -220,16 +214,16 @@ class _GlassOrb extends StatelessWidget {
     return Container(
       width:  diameter,
       height: diameter,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color:        const Color(0xFF1E5FFF).withOpacity(0.60),
+            color:        Color(0x991E5FFF),
             blurRadius:   45,
             spreadRadius: 5,
           ),
           BoxShadow(
-            color:        const Color(0xFF00B8FF).withOpacity(0.28),
+            color:        Color(0x4700B8FF),
             blurRadius:   80,
             spreadRadius: 12,
           ),
@@ -255,6 +249,7 @@ class _GlassOrb extends StatelessWidget {
               ),
             ),
 
+            // Bottom cyan reflected light
             Positioned(
               bottom: -diameter * 0.08,
               left:   diameter * 0.12,
@@ -263,17 +258,18 @@ class _GlassOrb extends StatelessWidget {
                 height: diameter * 0.58,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(diameter),
-                  gradient: RadialGradient(
+                  gradient: const RadialGradient(
                     colors: [
-                      const Color(0xFF00DDFF).withOpacity(0.50),
-                      const Color(0xFF0090FF).withOpacity(0.22),
-                      Colors.transparent,
+                      Color(0x8000DDFF),
+                      Color(0x380090FF),
+                      Color(0x000090FF),
                     ],
                   ),
                 ),
               ),
             ),
 
+            // Edge darkening
             DecoratedBox(
               decoration: BoxDecoration(
                 gradient: RadialGradient(
@@ -289,6 +285,7 @@ class _GlassOrb extends StatelessWidget {
               ),
             ),
 
+            // Glass rim
             DecoratedBox(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
