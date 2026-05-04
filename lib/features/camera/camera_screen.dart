@@ -1,32 +1,19 @@
 import 'dart:ui';
 
-import 'package:camera/camera.dart';
+import 'package:camera/camera.dart' show CameraPreview;
 import 'package:flutter/material.dart';
-import 'package:audioplayers/audioplayers.dart';
+
 import 'package:gp_hudai/app/app_routes.dart';
-import 'package:gp_hudai/core/constants/location_constants.dart';
-import 'package:gp_hudai/core/services/location_service.dart';
-import 'package:gp_hudai/core/services/permission_service.dart';
-import 'package:gp_hudai/core/storage/prefs.dart';
-import 'package:gp_hudai/core/services/yolo_service.dart';
+import 'package:gp_hudai/features/camera/camera_controller.dart';
 
-const bool kForceMockCamera = false;
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Audio file paths used by this screen.
-//  Note: audioplayers uses paths WITHOUT the "assets/" prefix.
-// ─────────────────────────────────────────────────────────────────────────────
-class _CameraAudio {
-  // Voice intro that explains the screen layout (plays once on first visit)
-  static const String intro = 'audio/camera/camera_intro.mp3';
-
-  // Location feature audio (3 files only)
-  static const String insideArafat        = 'audio/location/inside_arafat.mp3';
-  static const String outsideArafat       = 'audio/location/outside_arafat.mp3';
-  static const String locationUnavailable = 'audio/location/location_unavailable.mp3';
-}
-
+/// Camera screen — UI only.
+///
+/// All logic (camera, audio, AI, location) lives in CameraController.
+/// This file is responsible only for:
+///   - Displaying the camera preview
+///   - Drawing the 4 quadrant tap zones
+///   - Drawing the glassy header / footer overlays
+///   - Forwarding user taps to the controller
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
 
@@ -35,156 +22,38 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen> {
-  CameraController? _controller;
-  Future<void>? _initializeFuture;
-  String? _cameraError;
-  bool _useMockCamera = false;
-
-  final _permissionService     = const PermissionService();
-  final _locationService       = const LocationService();
-  final AudioPlayer _audioPlayer = AudioPlayer();
-  final YoloService _yoloService = YoloService();
-
-  bool _locationBusy = false;
+  late final CameraController _controller;
 
   @override
   void initState() {
     super.initState();
-    _initCamera();
-    _playIntroOnce();
-    _loadYoloModel(); 
+    _controller = CameraController();
+    _controller.addListener(_onControllerUpdate);
+    _controller.initialize();
   }
 
   @override
   void dispose() {
-    _yoloService.dispose(); 
-    _audioPlayer.dispose();
-    _controller?.dispose();
+    _controller.removeListener(_onControllerUpdate);
+    _controller.dispose();
     super.dispose();
   }
 
-  Future<void> _loadYoloModel() async {
-  try {
-    await _yoloService.loadModel();
-  } catch (e) {
-    debugPrint('🚨 Camera: YOLO model failed to load: $e');
-  }
-  }
-  // ─────────────────────────────────────────────────────────────────────────
-  //  Voice intro — plays only on first visit.
-  //  Uses Prefs to remember if the user has already heard it.
-  // ─────────────────────────────────────────────────────────────────────────
-  Future<void> _playIntroOnce() async {
-    //final hasHeard = await Prefs.hasHeardCameraIntro();
-   //if (hasHeard) return;
-
-    await Future.delayed(const Duration(milliseconds: 800));
-    await _playAudio(_CameraAudio.intro);
-    await Prefs.markCameraIntroHeard();
+  /// Called whenever the controller publishes a state change.
+  void _onControllerUpdate() {
+    if (mounted) setState(() {});
   }
 
-  Future<void> _replayIntro() async {
-    await _playAudio(_CameraAudio.intro);
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  //  Camera lifecycle
-  // ─────────────────────────────────────────────────────────────────────────
-  Future<void> _initCamera() async {
-    if (kForceMockCamera) {
-      if (mounted) setState(() => _useMockCamera = true);
-      return;
-    }
-
-    try {
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) {
-        setState(() {
-          _useMockCamera = true;
-          _cameraError = 'لا توجد كاميرا متاحة، تم تفعيل الوضع التجريبي.';
-        });
-        return;
-      }
-
-      final back = cameras.firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.back,
-        orElse: () => cameras.first,
-      );
-
-      _controller = CameraController(
-        back,
-        ResolutionPreset.medium,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.yuv420,
-      );
-
-      _initializeFuture = _controller!.initialize();
-      if (mounted) setState(() {});
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _useMockCamera = true;
-          _cameraError = 'تعذر تشغيل الكاميرا، تم تفعيل الوضع التجريبي.';
-        });
-      }
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  //  Audio playback helper
-  // ─────────────────────────────────────────────────────────────────────────
-  Future<void> _playAudio(String path) async {
-    debugPrint('🔊 Playing: $path');
-    try {
-      await _audioPlayer.play(AssetSource(path));
-    } catch (e) {
-      debugPrint('🔊 Audio error: $e');
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  //  Quadrant actions
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────
+  //  Settings — handled in the view because navigation needs context.
+  // ───────────────────────────────────────────────────────────────────
   void _onSettingsTap() {
     Navigator.pushNamed(context, AppRoutes.settings);
   }
 
-  void _onEmergencyTap() {
-    // TODO: PhoneService().callEmergency() — your colleague's task
-  }
-
-  Future<void> _onLocationTap() async {
-    if (_locationBusy) return;
-    setState(() => _locationBusy = true);
-
-    try {
-      final granted = await _permissionService.ensureLocationPermission();
-      if (!granted) {
-        await _playAudio(_CameraAudio.locationUnavailable);
-        return;
-      }
-
-      final position = await _locationService.getCurrentPosition();
-      debugPrint('GPS: ${position.latitude}, ${position.longitude}');
-
-      final inside = _locationService.isInsideCircle(
-        position,
-        LocationConstants.arafatZone,
-      );
-
-      await _playAudio(
-        inside ? _CameraAudio.insideArafat : _CameraAudio.outsideArafat,
-      );
-    } catch (_) {
-      await _playAudio(_CameraAudio.locationUnavailable);
-    } finally {
-      if (mounted) setState(() => _locationBusy = false);
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────
   //  Build
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -198,7 +67,7 @@ class _CameraScreenState extends State<CameraScreen> {
           // Layer 1 — 4 invisible quadrant tap zones (entire screen)
           Positioned.fill(child: _buildQuadrants()),
 
-          // Layer 2 — Visual glassy header (icons appear in top corners)
+          // Layer 2 — Visual glassy header (top corners icons)
           SafeArea(
             child: Align(
               alignment: Alignment.topCenter,
@@ -206,7 +75,7 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ),
 
-          // Layer 3 — Visual glassy footer (icons appear in bottom corners)
+          // Layer 3 — Visual glassy footer (bottom corners icons)
           Align(
             alignment: Alignment.bottomCenter,
             child: _buildGlassyFooter(),
@@ -216,13 +85,11 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  //  Quadrant tap zones — invisible, cover entire screen
-  //  Top-left      = Settings
-  //  Top-right     = Emergency
-  //  Bottom-left   = Replay intro
-  //  Bottom-right  = Location
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────
+  //  Quadrants — invisible tap zones covering the entire screen.
+  //  Top-left = Settings, Top-right = Emergency
+  //  Bottom-left = Replay intro, Bottom-right = Location
+  // ───────────────────────────────────────────────────────────────────
   Widget _buildQuadrants() {
     return Column(
       children: [
@@ -230,15 +97,15 @@ class _CameraScreenState extends State<CameraScreen> {
           child: Row(
             children: [
               Expanded(child: _quadrant(onTap: _onSettingsTap)),
-              Expanded(child: _quadrant(onTap: _onEmergencyTap)),
+              Expanded(child: _quadrant(onTap: _controller.onEmergencyTap)),
             ],
           ),
         ),
         Expanded(
           child: Row(
             children: [
-              Expanded(child: _quadrant(onTap: _replayIntro)),
-              Expanded(child: _quadrant(onTap: _onLocationTap)),
+              Expanded(child: _quadrant(onTap: _controller.onReplayInstructionsTap)),
+              Expanded(child: _quadrant(onTap: _controller.onLocationTap)),
             ],
           ),
         ),
@@ -246,30 +113,29 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  Widget _quadrant({required VoidCallback onTap}) {
+  Widget _quadrant({required Function() onTap}) {
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
-      onTap: onTap,
+      onTap: () => onTap(),
       child: const SizedBox.expand(),
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  //  Glassy header — top capsule with Settings (left) + Emergency (right)
-  //  IgnorePointer = lets taps pass through to the quadrants behind
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────
+  //  Glassy header — Settings (left) + Emergency (right)
+  // ───────────────────────────────────────────────────────────────────
   Widget _buildGlassyHeader() {
     return IgnorePointer(
       child: Container(
-        margin:  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        height:  64,
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        height: 64,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(32),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
             child: Container(
               decoration: BoxDecoration(
-                color:        Colors.white.withOpacity(0.10),
+                color: Colors.white.withOpacity(0.10),
                 borderRadius: BorderRadius.circular(32),
                 border: Border.all(
                   color: Colors.white.withOpacity(0.20),
@@ -291,9 +157,9 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  //  Glassy footer — bottom capsule with Replay (left) + Location (right)
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────
+  //  Glassy footer — Replay (left) + Location (right)
+  // ───────────────────────────────────────────────────────────────────
   Widget _buildGlassyFooter() {
     return IgnorePointer(
       child: Container(
@@ -305,7 +171,7 @@ class _CameraScreenState extends State<CameraScreen> {
             filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
             child: Container(
               decoration: BoxDecoration(
-                color:        Colors.white.withOpacity(0.10),
+                color: Colors.white.withOpacity(0.10),
                 borderRadius: BorderRadius.circular(38),
                 border: Border.all(
                   color: Colors.white.withOpacity(0.20),
@@ -317,9 +183,10 @@ class _CameraScreenState extends State<CameraScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const _GlassyIconBadge(icon: Icons.replay),
-                  _locationBusy
+                  _controller.locationBusy
                       ? const SizedBox(
-                          width: 24, height: 24,
+                          width: 24,
+                          height: 24,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.4,
                             color: Colors.white,
@@ -335,25 +202,28 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────
   //  Camera feed
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────
   Widget _buildCamera() {
-    if (_useMockCamera) return _buildMockCamera();
+    if (_controller.useMockCamera) return _buildMockCamera();
 
-    if (_initializeFuture == null || _controller == null) {
+    final initFuture = _controller.initializeFuture;
+    final cam        = _controller.cameraController;
+
+    if (initFuture == null || cam == null) {
       return const ColoredBox(color: Color(0xFF030A20));
     }
 
     return FutureBuilder<void>(
-      future: _initializeFuture,
+      future: initFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const ColoredBox(color: Color(0xFF030A20));
         }
 
         final size      = MediaQuery.sizeOf(context);
-        final camAspect = _controller!.value.aspectRatio;
+        final camAspect = cam.value.aspectRatio;
 
         return OverflowBox(
           maxWidth:  double.infinity,
@@ -363,7 +233,7 @@ class _CameraScreenState extends State<CameraScreen> {
             child: SizedBox(
               width:  size.width,
               height: size.width / camAspect,
-              child:  CameraPreview(_controller!),
+              child:  CameraPreview(cam),
             ),
           ),
         );
@@ -393,7 +263,7 @@ class _CameraScreenState extends State<CameraScreen> {
             const Icon(Icons.videocam_off, color: Colors.white38, size: 52),
             const SizedBox(height: 14),
             Text(
-              _cameraError ?? 'وضع تجريبي بدون كاميرا',
+              _controller.cameraError ?? 'وضع تجريبي بدون كاميرا',
               style: const TextStyle(color: Colors.white60, fontSize: 15),
               textAlign: TextAlign.center,
             ),
@@ -436,8 +306,8 @@ class _GlassyIconBadge extends StatelessWidget {
             ),
             boxShadow: [
               BoxShadow(
-                color:      const Color(0xFF1855FF).withOpacity(0.18),
-                blurRadius: 12,
+                color:        const Color(0xFF1855FF).withOpacity(0.18),
+                blurRadius:   12,
                 spreadRadius: 1,
               ),
             ],
