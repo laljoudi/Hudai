@@ -62,19 +62,24 @@ class SetupController extends ChangeNotifier {
   final AudioPlayer      _audioPlayer = AudioPlayer();
   final stt.SpeechToText _speech      = stt.SpeechToText();
 
-  bool _speechAvailable = false;
-  bool _disposed        = false;
-  bool _processed       = false;
+  bool _speechAvailable    = false;
+  bool _disposed           = false;
+  bool _processed          = false;
+  bool _userStopRequested  = false;
+  int  _restartFailures    = 0;
+  String _accumulatedText  = '';
 
   // State
   SetupStage _stage             = SetupStage.intro;
   String     _recognizedNumber  = '';
   String     _heardText         = '';
+  String     _lastParsedDigits  = '';
   bool       _shouldNavigate    = false;
 
   SetupStage get stage            => _stage;
   String     get recognizedNumber => _recognizedNumber;
   String     get heardText        => _heardText;
+  String     get lastParsedDigits => _lastParsedDigits;
   bool       get shouldNavigate   => _shouldNavigate;
 
   bool get isManual    => _stage == SetupStage.manual;
@@ -86,9 +91,9 @@ class SetupController extends ChangeNotifier {
   String get statusText {
     switch (_stage) {
       case SetupStage.intro:           return '...';
-      case SetupStage.idle:            return 'اضغط للتحدث';
+      case SetupStage.idle:            return 'اضغط للبدء بالتحدث';
       case SetupStage.startingListen:  return 'استعد للتحدث...';
-      case SetupStage.listening:       return 'جارٍ الاستماع...';
+      case SetupStage.listening:       return 'اضغط عند الانتهاء';
       case SetupStage.processing:      return 'جارٍ المعالجة...';
       case SetupStage.invalid:         return 'لم يتم التعرف على الرقم';
       case SetupStage.confirming:      return 'تأكيد الرقم...';
@@ -136,12 +141,24 @@ class SetupController extends ChangeNotifier {
   // Public taps
   // ──────────────────────────────────────────────────────────────────
 
-  /// Single tap → start the voice flow. Ignored during intro & saving.
+  /// Single tap behaviour:
+  ///   - if currently listening → stop the mic and process what was heard
+  ///   - otherwise → start the voice flow (start_listening → mic → STT)
+  /// Ignored during intro & saving.
   Future<void> onSingleTap() async {
     if (inputLocked) return;
-    if (_stage == SetupStage.manual) return; // tap doesn't fire in manual UI
+    if (_stage == SetupStage.manual) return;
     debugPrint('👆 onSingleTap (stage=$_stage)');
 
+    // Toggle: tap while listening means "I'm done — process now".
+    if (_stage == SetupStage.listening) {
+      debugPrint('🛑 user requested stop');
+      _userStopRequested = true;
+      try { await _speech.stop(); } catch (_) {}
+      return;
+    }
+
+    // Any other stage → start a fresh voice flow.
     await _cancelEverything();
     await _runVoiceFlow();
   }
@@ -187,9 +204,12 @@ class SetupController extends ChangeNotifier {
 
     // 4. Start listening
     _setStage(SetupStage.listening);
-    _recognizedNumber = '';
-    _heardText        = '';
-    _processed        = false;
+    _recognizedNumber  = '';
+    _heardText         = '';
+    _accumulatedText   = '';
+    _processed         = false;
+    _userStopRequested = false;
+    _restartFailures   = 0;
 
     await _speech.listen(
       localeId: 'ar_SA',
@@ -198,43 +218,101 @@ class SetupController extends ChangeNotifier {
         partialResults: true,
         cancelOnError: false,
       ),
-      pauseFor:  const Duration(seconds: 6),
-      listenFor: const Duration(seconds: 30),
+      // Don't auto-stop on silence — user explicitly taps again to stop.
+      // listenFor is just a safety upper bound.
+      pauseFor:  const Duration(minutes: 10),
+      listenFor: const Duration(minutes: 5),
       onResult:  _onSpeechResult,
     );
   }
 
   void _onSpeechStatus(String status) {
     debugPrint('🎙️ STT status: $status');
-    // When listening ends naturally without a final result event firing,
-    // process whatever partial we last heard so we never get stuck.
+    // The native Android engine will auto-stop after ~10–15s even with our
+    // huge pauseFor — we counter that by restarting the listen session
+    // until the user actually taps to stop.
     if ((status == 'notListening' || status == 'done') &&
         _stage == SetupStage.listening &&
         !_processed) {
-      _process(_heardText);
+      if (_userStopRequested) {
+        _process(_accumulatedText);
+      } else {
+        _restartListening();
+      }
     }
   }
 
   void _onSpeechError(dynamic error) {
     debugPrint('🎙️ STT error: $error');
-    if (_stage == SetupStage.listening && !_processed) {
+    if (_stage != SetupStage.listening || _processed) return;
+    if (_userStopRequested) {
       _processed = true;
       _handleInvalid();
+      return;
     }
+    // Engine error mid-listen — try a few restarts before giving up.
+    _restartFailures++;
+    if (_restartFailures >= 4) {
+      _processed = true;
+      _handleInvalid();
+      return;
+    }
+    _restartListening();
   }
 
-  void _onSpeechResult(dynamic result) async {
+  void _onSpeechResult(dynamic result) {
     final words   = (result.recognizedWords as String?) ?? '';
     final isFinal = (result.finalResult as bool?) ?? false;
     debugPrint('🎙️ heard: "$words" final=$isFinal');
 
-    // Live update so the user sees what's being heard.
-    _heardText = words;
-    notifyListeners();
+    // Live preview = previously-banked text + the current partial.
+    final live = ('$_accumulatedText $words').trim();
+    _heardText = live;
 
-    if (!isFinal) return;
+    // Bank only when the engine reports a final for this session.
+    if (isFinal && words.isNotEmpty) {
+      _accumulatedText = live;
+    }
+    notifyListeners();
+  }
+
+  /// Restart the underlying speech session without resetting the UI state.
+  /// Used when the native engine stops on its own but the user hasn't
+  /// tapped to end yet.
+  Future<void> _restartListening() async {
+    if (_disposed) return;
+    if (_stage != SetupStage.listening) return;
     if (_processed) return;
-    _process(words);
+    if (_userStopRequested) return;
+
+    debugPrint('🔄 restart listen (failures=$_restartFailures)');
+    // Brief pause so the previous session can fully tear down.
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (_disposed || _userStopRequested ||
+        _stage != SetupStage.listening || _processed) return;
+
+    try {
+      await _speech.listen(
+        localeId: 'ar_SA',
+        listenOptions: stt.SpeechListenOptions(
+          listenMode: stt.ListenMode.dictation,
+          partialResults: true,
+          cancelOnError: false,
+        ),
+        pauseFor:  const Duration(minutes: 10),
+        listenFor: const Duration(minutes: 5),
+        onResult:  _onSpeechResult,
+      );
+    } catch (e) {
+      debugPrint('🔄 restart failed: $e');
+      _restartFailures++;
+      if (_restartFailures < 4) {
+        _restartListening();
+      } else {
+        _processed = true;
+        _handleInvalid();
+      }
+    }
   }
 
   Future<void> _process(String words) async {
@@ -245,7 +323,8 @@ class SetupController extends ChangeNotifier {
     // 5. Processing audio + parse digits
     _setStage(SetupStage.processing);
     final digits = _arabicSpeechToDigits(words);
-    debugPrint('🎙️ parsed: "$digits"');
+    _lastParsedDigits = digits;
+    debugPrint('🎙️ parsed: "$digits" (len=${digits.length})');
 
     await _playAndWait(_SetupAudio.processing);
     if (_disposed || _stage != SetupStage.processing) return;
@@ -339,8 +418,11 @@ class SetupController extends ChangeNotifier {
   }
 
   Future<void> _cancelEverything() async {
-    _processed  = true; // prevent stray late callbacks from triggering process
-    _heardText  = '';
+    _processed         = true; // prevent stray late callbacks from triggering process
+    _userStopRequested = true; // prevent stray restart attempts
+    _heardText         = '';
+    _accumulatedText   = '';
+    _restartFailures   = 0;
     try { await _audioPlayer.stop(); } catch (_) {}
     if (_speech.isListening) {
       try { await _speech.cancel(); } catch (_) {}
@@ -383,33 +465,79 @@ String _arabicSpeechToDigits(String text) {
 
   const eastern = '٠١٢٣٤٥٦٧٨٩';
   const arabicWordToDigit = <String, String>{
-    'صفر': '0', 'سفر': '0',
-    'واحد': '1', 'وحد': '1',
-    'اثنان': '2', 'اثنين': '2', 'إثنان': '2', 'إثنين': '2', 'تنين': '2',
-    'ثلاثة': '3', 'ثلاث': '3',
-    'أربعة': '4', 'اربعة': '4', 'أربع': '4', 'اربع': '4',
-    'خمسة': '5', 'خمس': '5',
-    'ستة': '6', 'ست': '6',
-    'سبعة': '7', 'سبع': '7',
-    'ثمانية': '8', 'ثماني': '8', 'تمانية': '8',
-    'تسعة': '9', 'تسع': '9',
+    // 0
+    'صفر': '0', 'سفر': '0', 'صفرا': '0', 'صفرة': '0',
+    // 1
+    'واحد': '1', 'وحد': '1', 'وحدة': '1', 'واحدة': '1',
+    // 2
+    'اثنان': '2', 'اثنين': '2', 'إثنان': '2', 'إثنين': '2',
+    'تنين': '2', 'اتنين': '2', 'إتنين': '2', 'ثنين': '2',
+    // 3
+    'ثلاثة': '3', 'ثلاث': '3', 'تلاتة': '3', 'تلاثة': '3', 'ثلاثه': '3',
+    // 4
+    'أربعة': '4', 'اربعة': '4', 'أربع': '4', 'اربع': '4', 'اربعه': '4',
+    // 5
+    'خمسة': '5', 'خمس': '5', 'خمسه': '5',
+    // 6
+    'ستة': '6', 'ست': '6', 'سته': '6', 'ستا': '6',
+    // 7
+    'سبعة': '7', 'سبع': '7', 'سبعه': '7',
+    // 8
+    'ثمانية': '8', 'ثماني': '8', 'تمانية': '8', 'تماني': '8', 'ثمانيه': '8',
+    // 9
+    'تسعة': '9', 'تسع': '9', 'تسعه': '9',
   };
 
-  final buf = StringBuffer();
+  final buf  = StringBuffer();
+  final arab = RegExp(r'[؀-ۿ]');
+  int i = 0;
+  while (i < text.length) {
+    final ch = text[i];
 
-  // ASCII digits & Eastern Arabic numerals embedded in the text
-  for (final ch in text.split('')) {
-    if (RegExp(r'[0-9]').hasMatch(ch)) { buf.write(ch); continue; }
-    final i = eastern.indexOf(ch);
-    if (i >= 0) buf.write(i);
+    // ASCII digit
+    if (RegExp(r'[0-9]').hasMatch(ch)) { buf.write(ch); i++; continue; }
+
+    // Eastern Arabic numeral (٠–٩)
+    final ei = eastern.indexOf(ch);
+    if (ei >= 0) { buf.write(ei); i++; continue; }
+
+    // Arabic word — accumulate consecutive Arabic letters and look up
+    if (arab.hasMatch(ch)) {
+      var j = i;
+      while (j < text.length && arab.hasMatch(text[j])) { j++; }
+      final word   = text.substring(i, j);
+      final mapped = arabicWordToDigit[word];
+      if (mapped != null) buf.write(mapped);
+      i = j;
+      continue;
+    }
+
+    i++;
   }
 
-  // Spelled-out Arabic words
-  for (final raw in text.split(RegExp(r'\s+'))) {
-    final w = raw.replaceAll(RegExp(r'[^؀-ۿ]'), '');
-    final mapped = arabicWordToDigit[w];
-    if (mapped != null) buf.write(mapped);
-  }
-
-  return buf.toString();
+  return _normalizeSaudiNumber(buf.toString());
 }
+
+/// Normalize common variations of Saudi mobile numbers to the canonical
+/// `05xxxxxxxx` form so validation accepts what the user actually said.
+///   "+966512345678" / "00966512345678" / "966512345678"   → "0512345678"
+///   "5xxxxxxxx"   (no leading 0)                           → "05xxxxxxxx"
+///   "...0512345678..."  (extra noise digits around it)      → "0512345678"
+String _normalizeSaudiNumber(String d) {
+  // 1. Strip Saudi country code prefixes
+  if (d.startsWith('00966')) d = '0${d.substring(5)}';
+  else if (d.startsWith('966')) d = '0${d.substring(3)}';
+
+  // 2. Add a leading 0 if the user dropped it ("5xxxxxxxx" → "05xxxxxxxx")
+  if (d.length == 9 && d.startsWith('5')) d = '0$d';
+
+  // 3. If we still have extra digits (from noise / repeats / etc.),
+  //    try to pull a valid 05xxxxxxxx pattern out of the string.
+  if (d.length != 10) {
+    final m = RegExp(r'05\d{8}').firstMatch(d);
+    if (m != null) return m.group(0)!;
+  }
+
+  return d;
+}
+
