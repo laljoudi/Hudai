@@ -3,7 +3,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'package:gp_hudai/app/app_routes.dart';
-import 'package:gp_hudai/core/constants/colors.dart';
 import 'package:gp_hudai/features/setup/setup_controller.dart';
 
 /// Setup screen — UI only.
@@ -76,7 +75,7 @@ class _SetupScreenState extends State<SetupScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.deepNavy,
+      backgroundColor: const Color(0xFF030A20),
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -123,7 +122,7 @@ class _SetupScreenState extends State<SetupScreen>
             const SizedBox(height: 12),
 
             Text(
-              'اضغط ضغطة واحدة للتحدث، أو ضغطتين للإدخال اليدوي.',
+              'اضغط ضغطة واحدة لبدء التحدث، وضغطة اخرى للايقاف. ضغطتين للإدخال اليدوي',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white.withOpacity(0.55),
@@ -186,7 +185,7 @@ class _SetupScreenState extends State<SetupScreen>
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: showFinal
-                        ? AppColors.accentCyan
+                        ? const Color(0xFF40E0FF)
                         : Colors.white.withOpacity(0.85),
                     fontSize: showFinal ? 22 : 18,
                     fontWeight: FontWeight.w700,
@@ -264,7 +263,7 @@ class _SetupScreenState extends State<SetupScreen>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Background gradient — uses the project's shared immersive palette
+//  Background gradient
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Background extends StatelessWidget {
@@ -272,7 +271,19 @@ class _Background extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const DecoratedBox(
-      decoration: BoxDecoration(gradient: AppColors.immersiveBackground),
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment(0.0, 0.0),
+          radius: 1.0,
+          colors: [
+            Color(0xFF1A3A8A),
+            Color(0xFF0E2360),
+            Color(0xFF071540),
+            Color(0xFF030A20),
+          ],
+          stops: [0.0, 0.30, 0.65, 1.0],
+        ),
+      ),
     );
   }
 }
@@ -310,7 +321,7 @@ class _MicOrb extends StatelessWidget {
                 height: 220 * scale,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.accentCyan
+                  color: const Color(0xFF40E0FF)
                       .withOpacity(0.10 + pulse * 0.10),
                 ),
               ),
@@ -319,15 +330,19 @@ class _MicOrb extends StatelessWidget {
               height: 160,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: AppColors.cyanButton,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF40E0FF), Color(0xFF1855FF)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.accentBlue.withOpacity(glow),
+                    color: const Color(0xFF1855FF).withOpacity(glow),
                     blurRadius: 40,
                     spreadRadius: 4,
                   ),
                   BoxShadow(
-                    color: AppColors.softCyan.withOpacity(glow * 0.5),
+                    color: const Color(0xFF00CFFF).withOpacity(glow * 0.5),
                     blurRadius: 70,
                     spreadRadius: 12,
                   ),
@@ -374,7 +389,7 @@ class _GlassyTextField extends StatelessWidget {
             controller: controller,
             keyboardType: TextInputType.phone,
             textAlign: TextAlign.center,
-            cursorColor: AppColors.accentCyan,
+            cursorColor: const Color(0xFF40E0FF),
             validator: validator,
             style: const TextStyle(
               color: Colors.white,
@@ -387,12 +402,12 @@ class _GlassyTextField extends StatelessWidget {
               contentPadding: const EdgeInsets.symmetric(
                 vertical: 22, horizontal: 16,
               ),
-              hintText: '05xxxxxxxx',
+              hintText: '+966',
               hintStyle: TextStyle(
                 color: Colors.white.withOpacity(0.30), fontSize: 18,
               ),
               errorStyle: const TextStyle(
-                color: AppColors.errorRed, fontSize: 12,
+                color: Color(0xFFFF8A8A), fontSize: 12,
               ),
             ),
           ),
@@ -419,15 +434,19 @@ class _GlowingSaveButton extends StatelessWidget {
         height: 60,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(40),
-          gradient: AppColors.cyanButton,
+          gradient: const LinearGradient(
+            colors: [Color(0xFF40E0FF), Color(0xFF1855FF)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           boxShadow: [
             BoxShadow(
-              color: AppColors.accentBlue.withOpacity(0.55),
+              color: const Color(0xFF1855FF).withOpacity(0.55),
               blurRadius: 32, spreadRadius: 1,
               offset: const Offset(0, 6),
             ),
             BoxShadow(
-              color: AppColors.softCyan.withOpacity(0.30),
+              color: const Color(0xFF00CFFF).withOpacity(0.30),
               blurRadius: 60, spreadRadius: 8,
             ),
           ],
@@ -454,3 +473,4 @@ class _GlowingSaveButton extends StatelessWidget {
     );
   }
 }
+
