@@ -1,6 +1,6 @@
 name: gp_hudai
 description: "A new Flutter project."
-publish_to: 'none'
+publish_to: "none"
 
 version: 1.0.0+1
 
@@ -39,3 +39,4 @@ flutter:
     - assets/audio/onboarding/
     - assets/images/
     - assets/models/
+

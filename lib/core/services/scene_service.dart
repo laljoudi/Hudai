@@ -1,0 +1,161 @@
+// lib/core/services/scene_service.dart
+//
+// Responsibilities:
+//   1. Receives per-frame detections → resolves the highest-priority profile.
+//   2. Enforces a per-category cooldown to prevent audio flooding.
+//   3. Plays audio sequences via AudioService.
+//   4. Stores the last played sequence for repeatLastInstruction().
+//
+// ── Cooldown strategy ───────────────────────────────────────────
+//   Safety alerts       →  5 s
+//   Camera guidance     → 10 s
+//   Mountain status     → 15 s
+//   Mountain location   → 12 s
+//   Movement confirm    → 20 s
+//   Distance / arrival  → 15 s
+//
+// Note:
+//   This service only depends on scene analysis from the camera.
+//   It does not use GPS, location service, or Jabal Arafah stages.
+// ─────────────────────────────────────────────────────────────────
+
+import 'package:flutter/foundation.dart';
+
+import '../constants/scene_audio_map.dart';
+import '../models/scene_detection.dart';
+import 'audio_service.dart';
+
+class SceneService {
+  SceneService({required AudioService audioService})
+      : _audioService = audioService;
+
+  final AudioService _audioService;
+
+  // ── Confidence filtering ─────────────────────────────────────────
+
+  /// Minimum confidence required to trust a detection.
+  static const double _confidenceThreshold = 0.60;
+
+  // ── Cooldown table (milliseconds per category) ───────────────────
+
+  static const Map<AudioCategory, int> _cooldownMs = {
+    AudioCategory.safety: 5000,
+    AudioCategory.cameraGuidance: 10000,
+    AudioCategory.mountainStatus: 15000,
+    AudioCategory.mountainLocation: 12000,
+    AudioCategory.movementConfirmation: 20000,
+    AudioCategory.distanceAndArrival: 15000,
+  };
+
+  /// Timestamp (ms since epoch) of the last play per category.
+  final Map<AudioCategory, int> _lastPlayedAt = {};
+
+  // ── Repeat feature ───────────────────────────────────────────────
+
+  /// The full sequence that was last sent to AudioService.
+  /// Null until at least one sequence has been played.
+  List<String>? _lastPlayedSequence;
+
+  // ── Public API ───────────────────────────────────────────────────
+
+  /// Process a list of [SceneDetection]s from one inference frame.
+  ///
+  /// - Filters out low-confidence detections.
+  /// - If no reliable detections remain, defers to [processNoDetection].
+  /// - Resolves the highest-priority scene profile.
+  /// - Plays the related audio sequence if cooldown allows it.
+  void processDetections(List<SceneDetection> detections) {
+    final reliableDetections = detections
+        .where((d) => d.confidence >= _confidenceThreshold)
+        .toList();
+
+    if (reliableDetections.isEmpty) {
+      processNoDetection();
+      return;
+    }
+
+    final profile = _resolveHighestPriority(reliableDetections);
+    if (profile != null) {
+      _tryPlay(profile);
+    }
+  }
+
+  /// Call when the model returns no detections for a frame.
+  void processNoDetection() {
+    final profile = sceneAudioMap[SceneClass.noDetection];
+    if (profile != null) {
+      _tryPlay(profile);
+    }
+  }
+
+  /// Call when the camera feed is confirmed blocked or unusable.
+  void processCameraIssue() {
+    final profile = sceneAudioMap[SceneClass.cameraIssue];
+    if (profile != null) {
+      _tryPlay(profile);
+    }
+  }
+
+  /// Replays the last full sequence that was sent to AudioService.
+  /// Does nothing if no sequence has been played yet.
+  void repeatLastInstruction() {
+    if (_lastPlayedSequence != null && _lastPlayedSequence!.isNotEmpty) {
+      _playSequence(_lastPlayedSequence!);
+    }
+  }
+
+  // ── Priority resolution (private) ────────────────────────────────
+
+  SceneAudioProfile? _resolveHighestPriority(List<SceneDetection> detections) {
+    SceneAudioProfile? winner;
+
+    for (final detection in detections) {
+      final profile = sceneAudioMap[detection.sceneClass];
+      if (profile == null) continue;
+
+      // Lower enum index = higher priority.
+      if (winner == null || profile.category.index < winner.category.index) {
+        winner = profile;
+      }
+    }
+
+    return winner;
+  }
+
+  // ── Cooldown-gated playback (private) ────────────────────────────
+
+  /// Attempts to play [profile].
+  /// Returns true if played, false if throttled by cooldown.
+  bool _tryPlay(SceneAudioProfile profile) {
+    final cooldown = _cooldownMs[profile.category] ?? 10000;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final lastPlayed = _lastPlayedAt[profile.category] ?? 0;
+
+    if (now - lastPlayed < cooldown) {
+      debugPrint(
+        'SceneService: throttled ${profile.category.name} '
+        '(${now - lastPlayed} ms < $cooldown ms cooldown)',
+      );
+      return false;
+    }
+
+    _lastPlayedAt[profile.category] = now;
+    _playSequence(profile.audioSequence);
+    return true;
+  }
+
+  // ── Playback (private) ───────────────────────────────────────────
+
+  void _playSequence(List<String> audioKeys) {
+    if (audioKeys.isEmpty) return;
+
+    for (final key in audioKeys) {
+      _audioService.play(key);
+    }
+
+    // Store an immutable copy for the repeat feature.
+    _lastPlayedSequence = List.unmodifiable(audioKeys);
+
+    debugPrint('SceneService: playing ${audioKeys.join(' → ')}');
+  }
+}
