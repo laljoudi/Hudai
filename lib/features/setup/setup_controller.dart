@@ -540,4 +540,3 @@ String _normalizeSaudiNumber(String d) {
 
   return d;
 }
-

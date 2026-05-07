@@ -82,8 +82,13 @@ class CameraController extends ChangeNotifier {
   @override
   void dispose() {
     debugPrint('🛑 CameraController: dispose()');
-    _yoloService.dispose();
+   _yoloService.dispose();
     _audioPlayer.dispose();
+
+    // Stop receiving frames before disposing the camera
+    if (_cameraController?.value.isStreamingImages == true) {
+      _cameraController?.stopImageStream();
+    }
     _cameraController?.dispose();
     super.dispose();
   }
@@ -119,17 +124,49 @@ class CameraController extends ChangeNotifier {
         imageFormatGroup: cam.ImageFormatGroup.yuv420,
       );
 
-      _initializeFuture = _cameraController!.initialize();
+  _initializeFuture = _cameraController!.initialize();
       await _initializeFuture;
 
       _updateState(_state.copyWith(isCameraReady: true));
+
+      // Start receiving camera frames for AI processing
+      await _startFrameStream();
     } catch (_) {
       _useMockCamera = true;
       _cameraError   = 'تعذر تشغيل الكاميرا، تم تفعيل الوضع التجريبي.';
       notifyListeners();
     }
   }
+/// Subscribe to the camera's frame stream.
+  /// Each frame is sent to _onCameraFrame() for processing.
+  Future<void> _startFrameStream() async {
+    if (_cameraController == null) {
+      debugPrint('⚠️ _startFrameStream: _cameraController is null');
+      return;
+    }
 
+    try {
+      debugPrint('📹 Attempting to start frame stream...');
+      await _cameraController!.startImageStream(_onCameraFrame);
+      debugPrint('📹 Camera frame stream started successfully');
+    } catch (e) {
+      debugPrint('🚨 Failed to start frame stream: $e');
+    }
+  }
+
+  /// Called for every camera frame (~30 times per second).
+  /// We count them here in C1. Real AI processing is added in C2.
+  void _onCameraFrame(cam.CameraImage image) {
+    // For now, just count and log occasionally
+    final newCount = _state.framesProcessed + 1;
+
+    // Log every 30 frames (~1 per second) so we don't flood the console
+    if (newCount % 30 == 0) {
+      debugPrint('📸 Camera frames received: $newCount');
+    }
+
+    _updateState(_state.copyWith(framesProcessed: newCount));
+  }
   // ──────────────────────────────────────────────────────────────────
   // YOLO model loading
   // ──────────────────────────────────────────────────────────────────

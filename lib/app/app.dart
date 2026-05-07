@@ -11,7 +11,7 @@ class HudaiApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'GP Hudai',
       theme: AppTheme.light(),
-      initialRoute: AppRoutes.splash,
+      initialRoute: AppRoutes.yoloDebug,
       routes: AppRoutes.routes,
     );
   }
