@@ -4,6 +4,7 @@ import 'package:gp_hudai/features/onboarding/voice_instructions_screen.dart';
 import 'package:gp_hudai/features/setup/setup_screen.dart';
 import 'package:gp_hudai/features/camera/camera_screen.dart';
 import 'package:gp_hudai/features/settings/settings_screen.dart';
+import 'package:gp_hudai/features/debug/yolo_debug_screen.dart';
 
 class AppRoutes {
   AppRoutes._();
@@ -21,5 +22,6 @@ class AppRoutes {
     setup:             (_) => const SetupScreen(),
     camera:            (_) => const CameraScreen(),
     settings:          (_) => const SettingsScreen(),
+    yoloDebug:         (_) => const YoloDebugScreen(),
   };
 }

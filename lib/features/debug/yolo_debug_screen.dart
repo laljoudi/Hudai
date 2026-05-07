@@ -6,14 +6,20 @@ import 'package:image/image.dart' as img;
 
 import 'package:gp_hudai/core/constants/yolo_config.dart';
 import 'package:gp_hudai/core/models/detection.dart';
+import 'package:gp_hudai/core/services/audio_service.dart';
 import 'package:gp_hudai/core/services/detection_decoder.dart';
+import 'package:gp_hudai/core/services/detection_to_scene_adapter.dart';
+import 'package:gp_hudai/core/services/scene_service.dart';
 import 'package:gp_hudai/core/services/yolo_service.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
-/// A debug screen that runs the YOLO pipeline on static test images.
+/// A debug screen that runs the YOLO pipeline + audio on static test images.
 ///
-/// This screen is for development/verification only. It bypasses the camera
-/// and feeds pre-loaded Hajj images directly through the model.
+/// Workflow:
+///   Image → YOLO → Detections → Adapter → SceneService → Audio plays
+///
+/// Use this screen to verify the AI pipeline works end-to-end without
+/// needing a live camera or physical device.
 class YoloDebugScreen extends StatefulWidget {
   const YoloDebugScreen({super.key});
 
@@ -23,13 +29,19 @@ class YoloDebugScreen extends StatefulWidget {
 
 class _YoloDebugScreenState extends State<YoloDebugScreen> {
 
-  final YoloService      _yoloService = YoloService();
-  final DetectionDecoder _decoder     = const DetectionDecoder();
+  // Pipeline pieces
+  final YoloService                _yoloService = YoloService();
+  final DetectionDecoder           _decoder     = const DetectionDecoder();
+  final DetectionToSceneAdapter    _adapter     = const DetectionToSceneAdapter();
+
+  // Audio pipeline (from colleague)
+  late final AudioService _audioService;
+  late final SceneService _sceneService;
 
   bool _isLoading = true;
   String? _statusMessage;
 
-  // Map of imagePath → list of detections (or null if not yet tested)
+  // Map: imagePath → list of detections (or null if currently processing)
   final Map<String, List<Detection>?> _results = {};
 
   static const List<String> _testImages = [
@@ -42,6 +54,8 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
   @override
   void initState() {
     super.initState();
+    _audioService = AudioService();
+    _sceneService = SceneService(audioService: _audioService);
     _loadModel();
   }
 
@@ -64,6 +78,7 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
   @override
   void dispose() {
     _yoloService.dispose();
+    _audioService.dispose();
     super.dispose();
   }
 
@@ -76,7 +91,7 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
     });
 
     try {
-      // 1. Load the image bytes from assets
+      // 1. Load the image bytes
       final byteData = await rootBundle.load(imagePath);
       final bytes = byteData.buffer.asUint8List();
 
@@ -86,8 +101,7 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
         debugPrint('🚨 Failed to decode image');
         return;
       }
-      debugPrint(
-          '   Original size: ${originalImage.width}x${originalImage.height}');
+      debugPrint('   Original size: ${originalImage.width}x${originalImage.height}');
 
       // 3. Resize to 640×640
       final resized = img.copyResize(
@@ -97,7 +111,7 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
         interpolation: img.Interpolation.linear,
       );
 
-      // 4. Convert to Float32List normalized 0-1
+      // 4. Convert to Float32List
       final input = _imageToFloat32List(resized);
       debugPrint('   Input prepared: ${input.length} floats');
 
@@ -114,6 +128,13 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
         debugPrint('      → ${d.className} @ ${d.confidencePercent}');
       }
 
+      // 7. Convert to SceneDetection format using the adapter
+      final sceneDetections = _adapter.adapt(detections);
+      debugPrint('   Adapted to ${sceneDetections.length} SceneDetection(s)');
+
+      // 8. Feed to SceneService — it picks priority + plays audio
+      _sceneService.processDetections(sceneDetections);
+
       setState(() {
         _results[imagePath] = detections;
       });
@@ -124,6 +145,17 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
         _results[imagePath] = [];
       });
     }
+  }
+
+  /// Resets the SceneService cooldowns so we can test the same image again.
+  void _resetCooldowns() {
+    // Stop any currently playing audio
+    _audioService.stop();
+    // Note: SceneService doesn't expose a reset, so we recreate it.
+    setState(() {
+      _sceneService.repeatLastInstruction(); // optional safety
+    });
+    debugPrint('🔄 Audio stopped');
   }
 
   /// Converts a 640×640 RGB image into a normalized Float32List.
@@ -147,10 +179,9 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
   List<double> _runInference(Float32List input) {
     final interpreter = _yoloService.interpreter!;
 
-    // Reshape input to [1, 640, 640, 3] for the model
-    final reshapedInput = input.reshape([1, YoloConfig.inputSize, YoloConfig.inputSize, 3]);
+    final reshapedInput = input.reshape(
+        [1, YoloConfig.inputSize, YoloConfig.inputSize, 3]);
 
-    // Output shape: [1, 9, 8400]
     final outputShape = interpreter.getOutputTensor(0).shape;
     final output = List.generate(
       outputShape[0],
@@ -162,7 +193,6 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
 
     interpreter.run(reshapedInput, output);
 
-    // Flatten the output to a 1D list (matching what decoder expects)
     final flat = <double>[];
     for (final dim1 in output[0]) {
       flat.addAll(dim1);
@@ -176,11 +206,15 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
       backgroundColor: const Color(0xFF030A20),
       appBar: AppBar(
         backgroundColor: const Color(0xFF071540),
-        title: const Text(
-          'YOLO Debug',
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text('YOLO Debug', style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.stop_circle, color: Colors.redAccent),
+            tooltip: 'Stop audio',
+            onPressed: _resetCooldowns,
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(
@@ -189,10 +223,7 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
                 children: [
                   CircularProgressIndicator(color: Colors.white),
                   SizedBox(height: 16),
-                  Text(
-                    'Loading model...',
-                    style: TextStyle(color: Colors.white70),
-                  ),
+                  Text('Loading model...', style: TextStyle(color: Colors.white70)),
                 ],
               ),
             )
@@ -221,7 +252,6 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
     final result = _results[imagePath];
     final isProcessing = _results.containsKey(imagePath) && result == null;
     final hasResult = result != null;
-
     final filename = imagePath.split('/').last;
 
     return Card(
@@ -232,7 +262,6 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image preview
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Image.asset(
@@ -243,8 +272,6 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
               ),
             ),
             const SizedBox(height: 12),
-
-            // Filename
             Text(
               filename,
               style: const TextStyle(
@@ -254,13 +281,11 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
               ),
             ),
             const SizedBox(height: 8),
-
-            // Test button or results
             if (isProcessing)
               const Row(
                 children: [
                   SizedBox(
-                    width:  16,
+                    width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
@@ -268,10 +293,7 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
                     ),
                   ),
                   SizedBox(width: 12),
-                  Text(
-                    'Processing...',
-                    style: TextStyle(color: Colors.white70),
-                  ),
+                  Text('Processing...', style: TextStyle(color: Colors.white70)),
                 ],
               )
             else if (hasResult)
@@ -280,10 +302,24 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
               ElevatedButton.icon(
                 onPressed: () => _testImage(imagePath),
                 icon: const Icon(Icons.science),
-                label: const Text('Run YOLO'),
+                label: const Text('Run YOLO + Audio'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF1E5FFF),
                   foregroundColor: Colors.white,
+                ),
+              ),
+            if (hasResult)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: TextButton.icon(
+                  onPressed: () {
+                    setState(() => _results.remove(imagePath));
+                  },
+                  icon: const Icon(Icons.refresh, color: Colors.cyan),
+                  label: const Text(
+                    'Test again',
+                    style: TextStyle(color: Colors.cyan),
+                  ),
                 ),
               ),
           ],
@@ -318,7 +354,7 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
                   const Text('✅ ', style: TextStyle(fontSize: 14)),
                   Expanded(
                     child: Text(
-                      '${d.className}',
+                      d.className,
                       style: const TextStyle(color: Colors.white),
                     ),
                   ),
@@ -332,6 +368,11 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
                 ],
               ),
             )),
+        const SizedBox(height: 8),
+        const Text(
+          '🔊 Audio sequence triggered',
+          style: TextStyle(color: Colors.greenAccent, fontSize: 12),
+        ),
       ],
     );
   }

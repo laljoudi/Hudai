@@ -22,7 +22,7 @@ dependencies:
   audioplayers: ^6.1.0
   image: ^4.0.17
   tflite_flutter: ^0.11.0
-  speech_to_text: ^7.3.0
+  speech_to_text: ^7.0.0
 
 dev_dependencies:
   flutter_test:
@@ -38,5 +38,14 @@ flutter:
     - assets/audio/location/
     - assets/audio/setup/
     - assets/audio/onboarding/
+    - assets/audio/detection/
+    - assets/audio/detection/safety/
+    - assets/audio/detection/camera_guidance/
+    - assets/audio/detection/mountain_recognition_status/
+    - assets/audio/detection/mountain_location/
+    - assets/audio/detection/movement_confirmation/
+    - assets/audio/detection/distance_and_arrival/
+    - assets/audio/detection/other_audio/
     - assets/images/
     - assets/models/
+    - assets/test_images/
