@@ -92,43 +92,101 @@ class FramePreprocessor {
   /// Converts YUV420 (Android default) to an RGB image.
   /// YUV420 has 3 separate planes: Y (luminance), U + V (chrominance).
   /// This is more complex than BGRA — requires per-pixel math.
+/// Converts YUV420 (Android default) or NV12 (iOS) to an RGB image.
+  ///
+  /// Handles both:
+  ///   - 3-plane YUV420 (Android — separate Y, U, V planes)
+  ///   - 2-plane NV12   (iOS — Y plane + interleaved UV plane)
   img.Image _convertYuv420(CameraImage cameraImage) {
     final width  = cameraImage.width;
     final height = cameraImage.height;
-
-    final yPlane = cameraImage.planes[0];
-    final uPlane = cameraImage.planes[1];
-    final vPlane = cameraImage.planes[2];
-
-    final yRowStride = yPlane.bytesPerRow;
-    final uvRowStride = uPlane.bytesPerRow;
-    final uvPixelStride = uPlane.bytesPerPixel ?? 1;
+    final planes = cameraImage.planes;
 
     final rgbImage = img.Image(width: width, height: height);
 
-    for (int y = 0; y < height; y++) {
-      for (int x = 0; x < width; x++) {
-        final yIndex  = y * yRowStride + x;
-        final uvIndex = (y ~/ 2) * uvRowStride + (x ~/ 2) * uvPixelStride;
+    final yPlane = planes[0];
+    final yBytes = yPlane.bytes;
+    final yRowStride = yPlane.bytesPerRow;
 
-        final yValue = yPlane.bytes[yIndex];
-        final uValue = uPlane.bytes[uvIndex];
-        final vValue = vPlane.bytes[uvIndex];
+    // ── 3-plane YUV420 (Android) ──────────────────────────────────
+    if (planes.length >= 3) {
+      final uPlane = planes[1];
+      final vPlane = planes[2];
 
-        // YUV → RGB conversion formula (BT.601)
-        int r = (yValue + 1.402 * (vValue - 128)).round();
-        int g = (yValue - 0.344136 * (uValue - 128) - 0.714136 * (vValue - 128)).round();
-        int b = (yValue + 1.772 * (uValue - 128)).round();
+      final uvRowStride = uPlane.bytesPerRow;
+      final uvPixelStride = uPlane.bytesPerPixel ?? 1;
 
-        // Clamp to valid 0-255 range
-        r = r.clamp(0, 255);
-        g = g.clamp(0, 255);
-        b = b.clamp(0, 255);
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+          final yIndex  = y * yRowStride + x;
+          final uvIndex = (y ~/ 2) * uvRowStride + (x ~/ 2) * uvPixelStride;
 
-        rgbImage.setPixelRgb(x, y, r, g, b);
+          if (yIndex >= yBytes.length || uvIndex >= uPlane.bytes.length) {
+            continue;
+          }
+
+          final yValue = yBytes[yIndex];
+          final uValue = uPlane.bytes[uvIndex];
+          final vValue = vPlane.bytes[uvIndex];
+
+          int r = (yValue + 1.402 * (vValue - 128)).round();
+          int g = (yValue - 0.344136 * (uValue - 128) - 0.714136 * (vValue - 128)).round();
+          int b = (yValue + 1.772 * (uValue - 128)).round();
+
+          r = r.clamp(0, 255);
+          g = g.clamp(0, 255);
+          b = b.clamp(0, 255);
+
+          rgbImage.setPixelRgb(x, y, r, g, b);
+        }
       }
+      return rgbImage;
     }
 
+    // ── 2-plane NV12 (iOS) ───────────────────────────────────────
+    // Y plane is plane[0], UV interleaved in plane[1]
+    if (planes.length == 2) {
+      final uvPlane = planes[1];
+      final uvBytes = uvPlane.bytes;
+      final uvRowStride = uvPlane.bytesPerRow;
+
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+          final yIndex  = y * yRowStride + x;
+          final uvIndex = (y ~/ 2) * uvRowStride + (x ~/ 2) * 2;
+
+          if (yIndex >= yBytes.length || uvIndex + 1 >= uvBytes.length) {
+            continue;
+          }
+
+          final yValue = yBytes[yIndex];
+          final uValue = uvBytes[uvIndex];
+          final vValue = uvBytes[uvIndex + 1];
+
+          int r = (yValue + 1.402 * (vValue - 128)).round();
+          int g = (yValue - 0.344136 * (uValue - 128) - 0.714136 * (vValue - 128)).round();
+          int b = (yValue + 1.772 * (uValue - 128)).round();
+
+          r = r.clamp(0, 255);
+          g = g.clamp(0, 255);
+          b = b.clamp(0, 255);
+
+          rgbImage.setPixelRgb(x, y, r, g, b);
+        }
+      }
+      return rgbImage;
+    }
+
+    // ── Fallback — single plane (grayscale) ──────────────────────
+    // Just convert luminance to RGB equally
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final yIndex = y * yRowStride + x;
+        if (yIndex >= yBytes.length) continue;
+        final yValue = yBytes[yIndex];
+        rgbImage.setPixelRgb(x, y, yValue, yValue, yValue);
+      }
+    }
     return rgbImage;
   }
 

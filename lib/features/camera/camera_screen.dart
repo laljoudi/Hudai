@@ -43,6 +43,7 @@ class _CameraScreenState extends State<CameraScreen> {
   void _onControllerUpdate() {
     if (mounted) setState(() {});
   }
+  
 
   // ───────────────────────────────────────────────────────────────────
   //  Settings — handled in the view because navigation needs context.
@@ -85,15 +86,19 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  // ───────────────────────────────────────────────────────────────────
-  //  Quadrants — invisible tap zones covering the entire screen.
-  //  Top-left = Settings, Top-right = Emergency
-  //  Bottom-left = Replay intro, Bottom-right = Location
-  // ───────────────────────────────────────────────────────────────────
+ /// Three-section tap layout (replaces the old 2x2 quadrant grid).
+  ///
+  /// Top section    (top 30%):  Settings (left) + Emergency call (right)
+  /// Middle section (middle 40%): Dead zone — taps ignored on purpose
+  /// Bottom section (bottom 30%): Replay (left) + Location (right)
+  ///
+  /// Heights are flex values — they auto-scale to any iPhone screen size.
   Widget _buildQuadrants() {
     return Column(
       children: [
+        // ── TOP SECTION (30% of height) ─────────────────────────────
         Expanded(
+          flex: 3,
           child: Row(
             children: [
               Expanded(child: _quadrant(onTap: _onSettingsTap)),
@@ -101,7 +106,19 @@ class _CameraScreenState extends State<CameraScreen> {
             ],
           ),
         ),
+
+        // ── MIDDLE DEAD ZONE (40% of height) ────────────────────────
+        // Uses IgnorePointer so taps pass through to nothing — no action.
+        const Expanded(
+          flex: 4,
+          child: IgnorePointer(
+            child: SizedBox.expand(),
+          ),
+        ),
+
+        // ── BOTTOM SECTION (30% of height) ──────────────────────────
         Expanded(
+          flex: 3,
           child: Row(
             children: [
               Expanded(child: _quadrant(onTap: _controller.onReplayInstructionsTap)),
@@ -221,22 +238,12 @@ class _CameraScreenState extends State<CameraScreen> {
         if (snapshot.connectionState != ConnectionState.done) {
           return const ColoredBox(color: Color(0xFF030A20));
         }
+final camAspect = cam.value.aspectRatio;
 
-        final size      = MediaQuery.sizeOf(context);
-        final camAspect = cam.value.aspectRatio;
-
-        return OverflowBox(
-          maxWidth:  double.infinity,
-          maxHeight: double.infinity,
-          child: FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width:  size.width,
-              height: size.width / camAspect,
-              child:  CameraPreview(cam),
-            ),
-          ),
-        );
+        return AspectRatio(
+  aspectRatio: camAspect,
+  child: CameraPreview(cam),
+);
       },
     );
   }

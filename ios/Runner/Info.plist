@@ -35,6 +35,10 @@
 	<string>نحتاج الكاميرا لعرض المشهد.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>نحتاج موقعك لمعرفة هل أنت داخل المنطقة.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>يحتاج التطبيق إلى الميكروفون لإدخال رقم الطوارئ صوتياً</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>يحتاج التطبيق إلى التعرف على الكلام لتحويل الصوت إلى رقم</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -77,9 +81,3 @@
 	</array>
 </dict>
 </plist>
-
-<key>NSMicrophoneUsageDescription</key>
-<string>يحتاج التطبيق إلى الميكروفون لإدخال رقم الطوارئ صوتياً</string>
-
-<key>NSSpeechRecognitionUsageDescription</key>
-<string>يحتاج التطبيق إلى التعرف على الكلام لتحويل الصوت إلى رقم</string>

@@ -55,6 +55,9 @@ class SceneService {
   /// The full sequence that was last sent to AudioService.
   /// Null until at least one sequence has been played.
   List<String>? _lastPlayedSequence;
+  /// True if there's a previous instruction available to replay.
+  bool get hasLastInstruction =>
+      _lastPlayedSequence != null && _lastPlayedSequence!.isNotEmpty;
 
   // ── Public API ───────────────────────────────────────────────────
 
