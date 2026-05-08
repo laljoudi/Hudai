@@ -122,6 +122,11 @@ class SetupController extends ChangeNotifier {
     await _playAndWait(_SetupAudio.intro);
     if (_disposed) return;
 
+    // طلب إذن الميكروفون + التعرف على الكلام عند فتح شاشة التسجيل
+    // حتى لا يتفاجأ المستخدم لاحقًا وقت بدء الإدخال الصوتي.
+    await _ensureVoicePermissions();
+    if (_disposed) return;
+
     _setStage(SetupStage.idle);
   }
 
@@ -175,16 +180,36 @@ class SetupController extends ChangeNotifier {
   // ──────────────────────────────────────────────────────────────────
   // Voice flow
   // ──────────────────────────────────────────────────────────────────
+  Future<bool> _ensureVoicePermissions() async {
+    final micStatus = await ph.Permission.microphone.status;
+    final speechStatus = await ph.Permission.speech.status;
+
+    var mic = micStatus;
+    var speech = speechStatus;
+
+    if (mic.isDenied) {
+      mic = await ph.Permission.microphone.request();
+    }
+    if (speech.isDenied) {
+      speech = await ph.Permission.speech.request();
+    }
+
+    final granted = mic.isGranted && speech.isGranted;
+    if (!granted) {
+      debugPrint('🎙️ mic/speech permission denied: mic=$mic speech=$speech');
+    }
+    return granted;
+  }
+
   Future<void> _runVoiceFlow() async {
     // 1. Play start_listening
     _setStage(SetupStage.startingListen);
     await _playAndWait(_SetupAudio.startListening);
     if (_disposed || _stage != SetupStage.startingListen) return;
 
-    // 2. Request microphone permission
-    final mic = await ph.Permission.microphone.request();
-    if (!mic.isGranted) {
-      debugPrint('🎙️ mic permission denied');
+    // 2. Request microphone + speech permissions
+    final granted = await _ensureVoicePermissions();
+    if (!granted) {
       _setStage(SetupStage.idle);
       return;
     }

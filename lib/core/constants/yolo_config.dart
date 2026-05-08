@@ -43,7 +43,7 @@ class YoloConfig {
   /// Minimum confidence to keep a detection.
   /// Detections below this are discarded.
   /// 0.5 = 50% confident.
-  static const double confidenceThreshold = 0.5;
+  static const double confidenceThreshold = 0.35;
 
   /// IoU (Intersection over Union) threshold for NMS.
   /// When two boxes overlap by more than this, the lower-confidence
@@ -58,7 +58,7 @@ class YoloConfig {
   /// Target inference rate (frames per second).
   /// 3 FPS = inference every ~333ms.
   /// Higher = more responsive but more battery / heat.
-  static const int targetFps = 3;
+  static const int targetFps = 2;
 
   /// Calculated milliseconds between inferences.
   static int get throttleMs => (1000 / targetFps).round();

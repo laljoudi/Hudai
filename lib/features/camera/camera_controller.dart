@@ -1,6 +1,6 @@
-import 'package:audioplayers/audioplayers.dart';
 import 'package:camera/camera.dart' as cam;
 import 'package:flutter/foundation.dart';
+import 'dart:io' show Platform;
 
 import 'package:gp_hudai/core/constants/location_constants.dart';
 import 'package:gp_hudai/core/services/yolo_service.dart';
@@ -45,11 +45,12 @@ class CameraController extends ChangeNotifier {
   final InferenceThrottler   _throttler         = InferenceThrottler();
   final LocationService      _locationService   = const LocationService();
   final PermissionService    _permissionService = const PermissionService();
-  final AudioPlayer          _audioPlayer       = AudioPlayer();
   final AudioService             _audioService = AudioService();
   late final SceneService        _sceneService;
   final DetectionToSceneAdapter  _adapter      = const DetectionToSceneAdapter();
   final PhoneService             _phoneService = const PhoneService();
+  List<List<List<double>>>?      _inferenceOutput;
+  List<double>?                  _flatOutput;
 
   cam.CameraController? _cameraController;
   Future<void>?         _initializeFuture;
@@ -66,7 +67,8 @@ class CameraController extends ChangeNotifier {
   bool   _useMockCamera = false;
   String? _cameraError;
   bool    _locationBusy = false;
-   bool   _introPlaying  = false;
+  bool    _systemAudioBusy = false;
+  String? _lastSystemAudioPath;
 
   bool   get useMockCamera => _useMockCamera;
   String? get cameraError  => _cameraError;
@@ -78,16 +80,22 @@ class CameraController extends ChangeNotifier {
 
   /// Initialize everything: camera, AI model, audio intro.
   /// Call once when the screen opens.
-  Future<void> initialize() async {
-     _sceneService = SceneService(audioService: _audioService);
+Future<void> initialize() async {
+    _sceneService = SceneService(audioService: _audioService);
     debugPrint('🎬 CameraController: initialize()');
 
-    // Run all three in parallel — they don't depend on each other
-    await Future.wait([
-      _initCamera(),
-      _loadYoloModel(),
-      _playIntroOnce(),
-    ]);
+    // Step 1: Initialize camera (without starting frame stream yet)
+    await _initCamera();
+
+    // Step 2: Play intro first (per requirement).
+    await _playIntroOnce();
+
+    // Step 3: Load model after intro finishes.
+    await _loadYoloModel();
+
+    // Step 4: Start frame stream only after intro + model loading.
+    debugPrint('🎬 Intro done + model loaded → starting AI pipeline');
+    await _startFrameStream();
   }
 
  @override
@@ -101,7 +109,6 @@ class CameraController extends ChangeNotifier {
 
     _yoloService.dispose();
     _audioService.dispose();
-    _audioPlayer.dispose();
     _cameraController?.dispose();
     super.dispose();
   }
@@ -130,20 +137,21 @@ class CameraController extends ChangeNotifier {
         orElse: () => cameras.first,
       );
 
+      final preset = cam.ResolutionPreset.medium;
+
       _cameraController = cam.CameraController(
         back,
-        cam.ResolutionPreset.high,
+        preset,
         enableAudio: false,
-        imageFormatGroup: cam.ImageFormatGroup.yuv420,
+        imageFormatGroup: Platform.isIOS
+            ? cam.ImageFormatGroup.bgra8888
+            : cam.ImageFormatGroup.yuv420,
       );
 
   _initializeFuture = _cameraController!.initialize();
       await _initializeFuture;
 
-      _updateState(_state.copyWith(isCameraReady: true));
-
-      // Start receiving camera frames for AI processing
-      await _startFrameStream();
+    _updateState(_state.copyWith(isCameraReady: true));
     } catch (_) {
       _useMockCamera = true;
       _cameraError   = 'تعذر تشغيل الكاميرا، تم تفعيل الوضع التجريبي.';
@@ -192,25 +200,22 @@ class CameraController extends ChangeNotifier {
       // 4. Reshape input for the model
       final reshapedInput = input.reshape([1, 640, 640, 3]);
 
-      // 5. Prepare output buffer matching the model's output shape
-      final outputShape = _yoloService.interpreter!.getOutputTensor(0).shape;
-      final output = List.generate(
-        outputShape[0],
-        (_) => List.generate(
-          outputShape[1],
-          (_) => List<double>.filled(outputShape[2], 0.0),
-        ),
-      );
-            // Give the UI thread a chance to render before heavy inference
-      await Future.delayed(Duration.zero);
-
+      // 5. Reuse preallocated output buffers to reduce GC/jank.
+      final output = _inferenceOutput;
+      final flat = _flatOutput;
+      if (output == null || flat == null) {
+        _throttler.markDone();
+        return;
+      }
       // 6. Run inference
       _yoloService.interpreter!.run(reshapedInput, output);
 
       // 7. Flatten output for the decoder
-      final flat = <double>[];
+      int outIdx = 0;
       for (final dim1 in output[0]) {
-        flat.addAll(dim1);
+        for (final value in dim1) {
+          flat[outIdx++] = value;
+        }
       }
 
       // 8. Decode raw output → Detection objects
@@ -220,21 +225,20 @@ class CameraController extends ChangeNotifier {
       final sceneDetections = _adapter.adapt(detections);
 
       // 10. SceneService picks priority + plays audio
-      _sceneService.processDetections(sceneDetections);
+      // Skip scene audio while system audio is speaking
+      // (intro/location/emergency feedback) to avoid overlap.
+      if (!_systemAudioBusy) {
+        _sceneService.processDetections(sceneDetections);
+      }
 
-      // 11. Update state — only notify when detections actually change
-      final oldDetectionCount = _state.currentDetections.length;
+      // 11. Update internal state only.
+      // We intentionally avoid rebuilding the full camera UI on each
+      // detection delta to keep preview smooth.
       _state = _state.copyWith(
         framesProcessed:   newCount,
         currentDetections: detections,
         isInferring:       false,
       );
-
-      // Only trigger UI rebuild when detection count changes
-      // (not on every frame — prevents lag)
-      if (detections.length != oldDetectionCount) {
-        notifyListeners();
-      }
 
       // Log occasionally so we know it's alive
       if (newCount % 3 == 0) {
@@ -254,6 +258,15 @@ class CameraController extends ChangeNotifier {
   Future<void> _loadYoloModel() async {
     try {
       await _yoloService.loadModel();
+      final outputShape = _yoloService.interpreter!.getOutputTensor(0).shape;
+      _inferenceOutput = List.generate(
+        outputShape[0],
+        (_) => List.generate(
+          outputShape[1],
+          (_) => List<double>.filled(outputShape[2], 0.0),
+        ),
+      );
+      _flatOutput = List<double>.filled(outputShape[1] * outputShape[2], 0.0);
       _updateState(_state.copyWith(isAiReady: true));
     } catch (e) {
       debugPrint('🚨 CameraController: YOLO model failed to load: $e');
@@ -267,34 +280,29 @@ class CameraController extends ChangeNotifier {
   Future<void> _playAudio(String path) async {
     debugPrint('🔊 Playing: $path');
     try {
-      await _audioPlayer.play(AssetSource(path));
+      _systemAudioBusy = true;
+      await _sceneService.stop();
+      _lastSystemAudioPath = path;
+      await _audioService.playAssetNow(path);
     } catch (e) {
       debugPrint('🔊 Audio error: $e');
+    } finally {
+      _systemAudioBusy = false;
     }
   }
 
 Future<void> _playIntroOnce() async {
-    _introPlaying = true;
-
     await Future.delayed(const Duration(milliseconds: 800));
+
+    // Play intro and wait until it finishes.
     await _playAudio(_CameraAudio.intro);
-
-    // Wait for the intro to finish playing before allowing AI audio.
-    // Camera intro is roughly 15 seconds — we listen for completion.
-    _audioPlayer.onPlayerComplete.listen((_) {
-      _introPlaying = false;
-      debugPrint('🔊 Camera intro finished — AI audio enabled');
-    });
-
-    // Safety timeout: if onPlayerComplete never fires, unlock after 20s.
-    Future.delayed(const Duration(seconds: 20), () {
-      if (_introPlaying) {
-        _introPlaying = false;
-        debugPrint('🔊 Camera intro timeout — AI audio enabled');
-      }
-    });
+    debugPrint('🔊 Camera intro finished');
 
     await Prefs.markCameraIntroHeard();
+  }
+
+  Future<void> _interruptAllAudio() async {
+    await _sceneService.stop();
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -310,7 +318,7 @@ Future<void> _playIntroOnce() async {
 
   /// Top-right: emergency call (DOUBLE-TAP REQUIRED).
   ///
-  /// First tap  → plays "double tap to confirm" audio
+  /// First tap  → arms confirmation window only
   /// Second tap (within 1.5s) → places the emergency call
   /// If the second tap doesn't come within the window, state resets.
   Future<void> onEmergencyTap() async {
@@ -323,9 +331,6 @@ Future<void> _playIntroOnce() async {
       // First tap (or window expired) — arm the double-tap
       _firstEmergencyTapMs = nowMs;
       debugPrint('☎️ First tap registered — waiting for confirmation');
-      // Play a confirmation audio prompt
-      // (Using camera intro as a placeholder; your colleague can add a dedicated audio)
-      await _playAudio(_CameraAudio.intro);
       return;
     }
 
@@ -348,9 +353,16 @@ Future<void> _playIntroOnce() async {
   Future<void> onReplayInstructionsTap() async {
     debugPrint('👆 onReplayInstructionsTap');
 
-    // Check if SceneService has a previous instruction to replay
+    // Replays ONE last clip only.
+    if (_lastSystemAudioPath != null) {
+      debugPrint('🔁 Replaying last system audio clip');
+      await _playAudio(_lastSystemAudioPath!);
+      return;
+    }
+
     if (_sceneService.hasLastInstruction) {
-      debugPrint('🔁 Replaying last AI instruction');
+      debugPrint('🔁 Replaying last AI audio clip');
+      await _interruptAllAudio();
       _sceneService.repeatLastInstruction();
     } else {
       debugPrint('🔁 No AI instruction yet — replaying intro');
@@ -364,9 +376,13 @@ Future<void> _playIntroOnce() async {
     if (_locationBusy) return;
 
     _locationBusy = true;
+    _systemAudioBusy = true;
     notifyListeners();
 
     try {
+      // Stop any current clip immediately on tap.
+      await _interruptAllAudio();
+
       final granted = await _permissionService.ensureLocationPermission();
       if (!granted) {
         await _playAudio(_CameraAudio.locationUnavailable);
@@ -387,6 +403,7 @@ Future<void> _playIntroOnce() async {
     } catch (_) {
       await _playAudio(_CameraAudio.locationUnavailable);
     } finally {
+      _systemAudioBusy = false;
       _locationBusy = false;
       notifyListeners();
     }

@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:gp_hudai/core/constants/yolo_config.dart';
 
 /// Rate-limits AI inference to a target frames-per-second.
@@ -21,7 +23,12 @@ class InferenceThrottler {
 
   /// How many milliseconds to wait between frames.
   /// Read from YoloConfig — currently 333ms (3 FPS).
-  int get _intervalMs => YoloConfig.throttleMs;
+  int get _intervalMs {
+    // iOS: use a slightly slower inference cadence to keep preview fluid
+    // on real devices during long sessions.
+    if (Platform.isIOS) return 1100; // ~0.9 FPS
+    return YoloConfig.throttleMs;
+  }
 
   /// Returns true if this frame should be processed.
   /// Returns false if it should be dropped.

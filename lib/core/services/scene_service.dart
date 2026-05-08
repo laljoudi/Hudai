@@ -34,7 +34,7 @@ class SceneService {
   // ── Confidence filtering ─────────────────────────────────────────
 
   /// Minimum confidence required to trust a detection.
-  static const double _confidenceThreshold = 0.60;
+  static const double _confidenceThreshold = 0.45;
 
   // ── Cooldown table (milliseconds per category) ───────────────────
 
@@ -55,6 +55,7 @@ class SceneService {
   /// The full sequence that was last sent to AudioService.
   /// Null until at least one sequence has been played.
   List<String>? _lastPlayedSequence;
+  String? _lastPlayedKey;
   /// True if there's a previous instruction available to replay.
   bool get hasLastInstruction =>
       _lastPlayedSequence != null && _lastPlayedSequence!.isNotEmpty;
@@ -99,12 +100,18 @@ class SceneService {
     }
   }
 
-  /// Replays the last full sequence that was sent to AudioService.
-  /// Does nothing if no sequence has been played yet.
+  /// Replays only the last played clip.
+  /// Does nothing if no clip has been played yet.
   void repeatLastInstruction() {
-    if (_lastPlayedSequence != null && _lastPlayedSequence!.isNotEmpty) {
-      _playSequence(_lastPlayedSequence!);
+    final last = _lastPlayedKey;
+    if (last != null && last.isNotEmpty) {
+      _audioService.play(last);
     }
+  }
+
+  /// Stops any currently playing scene audio.
+  Future<void> stop() async {
+    await _audioService.stop();
   }
 
   // ── Priority resolution (private) ────────────────────────────────
@@ -135,10 +142,6 @@ class SceneService {
     final lastPlayed = _lastPlayedAt[profile.category] ?? 0;
 
     if (now - lastPlayed < cooldown) {
-      debugPrint(
-        'SceneService: throttled ${profile.category.name} '
-        '(${now - lastPlayed} ms < $cooldown ms cooldown)',
-      );
       return false;
     }
 
@@ -158,6 +161,7 @@ class SceneService {
 
     // Store an immutable copy for the repeat feature.
     _lastPlayedSequence = List.unmodifiable(audioKeys);
+    _lastPlayedKey = audioKeys.last;
 
     debugPrint('SceneService: playing ${audioKeys.join(' → ')}');
   }

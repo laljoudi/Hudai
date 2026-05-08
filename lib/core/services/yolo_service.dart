@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:gp_hudai/core/constants/yolo_config.dart';
+import 'dart:io' show Platform;
 
 /// Wraps the TensorFlow Lite interpreter for the YOLO Hajj model.
 ///
@@ -34,8 +35,11 @@ class YoloService {
       // Load the .tflite model from assets
       // Note: tflite_flutter strips the 'assets/' prefix automatically
       final options = InterpreterOptions()
-  ..threads = 2
-  ..useNnApiForAndroid = false;
+        // iOS runs smoother with a single inference thread.
+        ..threads = Platform.isIOS ? 1 : 2
+        // Use Metal delegate on iOS for faster inference and less UI lag.
+        ..useMetalDelegateForIOS = Platform.isIOS
+        ..useNnApiForAndroid = false;
 
 _interpreter = await Interpreter.fromAsset(
   'assets/models/yolo_hajj.tflite',

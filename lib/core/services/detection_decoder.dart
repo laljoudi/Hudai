@@ -64,7 +64,12 @@ class DetectionDecoder {
       int    bestClass = 0;
 
       for (int c = 0; c < numClasses; c++) {
-        final score = rawOutput[(4 + c) * numAnchors + i];
+        final rawScore = rawOutput[(4 + c) * numAnchors + i];
+        // Some TFLite exports return logits instead of probabilities.
+        // If score is outside [0,1], convert using sigmoid.
+        final score = (rawScore < 0.0 || rawScore > 1.0)
+            ? _sigmoid(rawScore)
+            : rawScore;
         if (score > bestScore) {
           bestScore = score;
           bestClass = c;
@@ -154,5 +159,9 @@ class DetectionDecoder {
     if (unionArea <= 0) return 0.0;
 
     return interArea / unionArea;
+  }
+
+  double _sigmoid(double x) {
+    return 1.0 / (1.0 + math.exp(-x));
   }
 }

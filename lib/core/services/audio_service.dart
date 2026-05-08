@@ -27,6 +27,7 @@
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:collection';
 
 import '../constants/audio_keys.dart';
 
@@ -34,6 +35,8 @@ class AudioService {
   AudioService() : _player = AudioPlayer();
 
   final AudioPlayer _player;
+  final Queue<String> _queue = Queue<String>();
+  bool _draining = false;
 
   // ── Asset map: key → file path ───────────────────────────────────
   //
@@ -84,11 +87,9 @@ class AudioService {
   };
   // ── Public API ───────────────────────────────────────────────────
 
-  /// Plays the audio clip mapped to [key].
+  /// Queues and plays the audio clip mapped to [key].
   ///
-  /// If another clip is already playing it stops and the new one starts.
-  /// SceneService queues clips by calling play() sequentially — audioplayers
-  /// completes each one before the next starts automatically.
+  /// Playback is serialized to prevent overlapping voices.
   void play(String key) {
     final path = _assetMap[key];
 
@@ -97,15 +98,44 @@ class AudioService {
       return;
     }
 
-    _player.play(AssetSource(path)).catchError((Object e) {
-      debugPrint('AudioService: 🔊 Error playing "$key": $e');
-    });
-
+    _queue.add(path);
+    _drainQueue();
     debugPrint('AudioService: 🔊 $key → $path');
+  }
+
+  /// Interrupts current playback and plays a raw asset path immediately.
+  /// Path should be relative to assets/ (without the assets/ prefix).
+  Future<void> playAssetNow(String path) async {
+    _queue.clear();
+    await _player.stop();
+    await _safePlayAndWait(path);
+  }
+
+  Future<void> _drainQueue() async {
+    if (_draining) return;
+    _draining = true;
+
+    while (_queue.isNotEmpty) {
+      final path = _queue.removeFirst();
+      await _safePlayAndWait(path);
+    }
+
+    _draining = false;
+  }
+
+  Future<void> _safePlayAndWait(String path) async {
+    try {
+      await _player.stop();
+      await _player.play(AssetSource(path));
+      await _player.onPlayerComplete.first.timeout(const Duration(seconds: 20));
+    } catch (e) {
+      debugPrint('AudioService: 🔊 Error playing "$path": $e');
+    }
   }
 
   /// Stops the current clip immediately.
   Future<void> stop() async {
+    _queue.clear();
     await _player.stop();
   }
 
