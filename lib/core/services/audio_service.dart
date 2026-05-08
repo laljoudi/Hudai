@@ -32,11 +32,23 @@ import 'dart:collection';
 import '../constants/audio_keys.dart';
 
 class AudioService {
-  AudioService() : _player = AudioPlayer();
+  AudioService() : _player = AudioPlayer() {
+    _configure();
+  }
 
   final AudioPlayer _player;
   final Queue<String> _queue = Queue<String>();
   bool _draining = false;
+  int _interruptToken = 0;
+
+  Future<void> _configure() async {
+    try {
+      await _player.setReleaseMode(ReleaseMode.stop);
+      await _player.setPlayerMode(PlayerMode.mediaPlayer);
+    } catch (e) {
+      debugPrint('AudioService: configure error: $e');
+    }
+  }
 
   // ── Asset map: key → file path ───────────────────────────────────
   //
@@ -98,6 +110,11 @@ class AudioService {
       return;
     }
 
+    // Avoid stale long backlogs.
+    if (_queue.length >= 6) {
+      return;
+    }
+
     _queue.add(path);
     _drainQueue();
     debugPrint('AudioService: 🔊 $key → $path');
@@ -106,28 +123,35 @@ class AudioService {
   /// Interrupts current playback and plays a raw asset path immediately.
   /// Path should be relative to assets/ (without the assets/ prefix).
   Future<void> playAssetNow(String path) async {
+    _interruptToken++;
     _queue.clear();
     await _player.stop();
-    await _safePlayAndWait(path);
+    await _safePlayAndWait(path, token: _interruptToken);
   }
 
   Future<void> _drainQueue() async {
     if (_draining) return;
     _draining = true;
+    final token = _interruptToken;
 
     while (_queue.isNotEmpty) {
+      if (token != _interruptToken) break;
       final path = _queue.removeFirst();
-      await _safePlayAndWait(path);
+      await _safePlayAndWait(path, token: token);
     }
 
     _draining = false;
   }
 
-  Future<void> _safePlayAndWait(String path) async {
+  Future<void> _safePlayAndWait(String path, {required int token}) async {
     try {
-      await _player.stop();
+      if (token != _interruptToken) return;
       await _player.play(AssetSource(path));
-      await _player.onPlayerComplete.first.timeout(const Duration(seconds: 20));
+      final duration = await _player.getDuration();
+      final wait = (duration == null || duration <= Duration.zero)
+          ? const Duration(milliseconds: 1400)
+          : duration + const Duration(milliseconds: 120);
+      await Future.delayed(wait);
     } catch (e) {
       debugPrint('AudioService: 🔊 Error playing "$path": $e');
     }

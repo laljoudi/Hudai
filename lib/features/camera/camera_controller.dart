@@ -1,5 +1,6 @@
 import 'package:camera/camera.dart' as cam;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'dart:io' show Platform;
 
 import 'package:gp_hudai/core/constants/location_constants.dart';
@@ -69,6 +70,7 @@ class CameraController extends ChangeNotifier {
   bool    _locationBusy = false;
   bool    _systemAudioBusy = false;
   String? _lastSystemAudioPath;
+  bool    _cameraStarting = false;
 
   bool   get useMockCamera => _useMockCamera;
   String? get cameraError  => _cameraError;
@@ -148,21 +150,30 @@ Future<void> initialize() async {
             : cam.ImageFormatGroup.yuv420,
       );
 
-  _initializeFuture = _cameraController!.initialize();
+      _initializeFuture = _cameraController!.initialize();
       await _initializeFuture;
+      try {
+        await _cameraController!.lockCaptureOrientation(
+          DeviceOrientation.portraitUp,
+        );
+      } catch (_) {}
 
-    _updateState(_state.copyWith(isCameraReady: true));
+      _updateState(_state.copyWith(isCameraReady: true));
     } catch (_) {
       _useMockCamera = true;
       _cameraError   = 'تعذر تشغيل الكاميرا، تم تفعيل الوضع التجريبي.';
       notifyListeners();
     }
   }
-/// Subscribe to the camera's frame stream.
+  /// Subscribe to the camera's frame stream.
   /// Each frame is sent to _onCameraFrame() for processing.
   Future<void> _startFrameStream() async {
+    if (_cameraStarting) return;
+    _cameraStarting = true;
+
     if (_cameraController == null) {
       debugPrint('⚠️ _startFrameStream: _cameraController is null');
+      _cameraStarting = false;
       return;
     }
 
@@ -172,6 +183,8 @@ Future<void> initialize() async {
       debugPrint('📹 Camera frame stream started successfully');
     } catch (e) {
       debugPrint('🚨 Failed to start frame stream: $e');
+    } finally {
+      _cameraStarting = false;
     }
   }
 

@@ -43,7 +43,7 @@ class YoloConfig {
   /// Minimum confidence to keep a detection.
   /// Detections below this are discarded.
   /// 0.5 = 50% confident.
-  static const double confidenceThreshold = 0.35;
+  static const double confidenceThreshold = 0.15;
 
   /// IoU (Intersection over Union) threshold for NMS.
   /// When two boxes overlap by more than this, the lower-confidence

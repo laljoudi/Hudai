@@ -34,7 +34,7 @@ class SceneService {
   // ── Confidence filtering ─────────────────────────────────────────
 
   /// Minimum confidence required to trust a detection.
-  static const double _confidenceThreshold = 0.45;
+  static const double _confidenceThreshold = 0.55;
 
   // ── Cooldown table (milliseconds per category) ───────────────────
 
