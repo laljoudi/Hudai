@@ -3,15 +3,19 @@ import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
+import 'package:gp_hudai/core/storage/prefs.dart';
+
 /// Brain of the Settings screen.
 ///
 /// Owns the audio player and the intro-sequence state. The view only
 /// renders and forwards taps; it has no audio logic of its own.
 ///
-/// Audio sequence on screen open (chained automatically via onPlayerComplete):
+/// Audio sequence on screen open (played sequentially):
 ///   1. settings_page_intro.mp3
-///   2. back_navigation_instruction.mp3
-///   3. open_emergency_edit.mp3
+///   2. (~1.5s gap)
+///   3. back_navigation_instruction.mp3
+///   4. (~1.5s gap)
+///   5. open_emergency_edit.mp3
 ///
 /// Any tap on the screen calls [stopAudio] before navigating, so the user
 /// is never spoken over.
@@ -24,41 +28,61 @@ class SettingsController extends ChangeNotifier {
     'audio/settings/open_emergency_edit.mp3',
   ];
 
+  /// Gap between clips. Within the spec's 2–3s upper bound, but
+  /// short enough to feel responsive.
+  static const Duration _gapBetweenClips = Duration(milliseconds: 1500);
+
+  /// Hard upper bound on a single clip's playback. Set high so a slightly
+  /// long clip never gets cut off mid-sentence — this is a safety net
+  /// against a missing `onPlayerComplete`, NOT a normal pace control.
+  static const Duration _clipTimeout = Duration(seconds: 60);
+
   final AudioPlayer _player = AudioPlayer();
-  StreamSubscription<void>? _completeSub;
 
-  int  _seqIndex = 0;
-  bool _disposed = false;
+  bool    _disposed      = false;
+  bool    _stopped       = false;
+  String? _currentNumber;
 
-  /// Index of the clip currently playing (or just played). Useful for
-  /// debugging / future UI like "now playing" hints.
-  int get currentClipIndex => _seqIndex;
+  /// The emergency number currently saved in Prefs, or null if none yet.
+  String? get currentNumber => _currentNumber;
 
   // ──────────────────────────────────────────────────────────────────
   // Lifecycle
   // ──────────────────────────────────────────────────────────────────
 
   /// Configure the player and kick off the intro sequence.
+  ///
+  /// Designed to start the first clip with as little startup latency as
+  /// possible: player config + sequence start happen back-to-back, and
+  /// the saved-number lookup runs in parallel (it's only used by the UI
+  /// label, not the audio).
   Future<void> initialize() async {
     debugPrint('SettingsController: initialize()');
+
+    // Match the player config used by the rest of the app (AudioService).
+    // mediaPlayer mode is the safest choice when other audioplayers
+    // instances may be alive in the app.
     try {
       await _player.setReleaseMode(ReleaseMode.stop);
+      await _player.setPlayerMode(PlayerMode.mediaPlayer);
       await _player.setVolume(1.0);
     } catch (e) {
       debugPrint('🔊 settings player config error: $e');
     }
 
-    // When one clip ends, automatically advance to the next.
-    _completeSub = _player.onPlayerComplete.listen((_) => _playNextInSequence());
+    // Fire-and-forget: don't block the audio sequence on prefs I/O.
+    // ignore: unawaited_futures
+    refreshCurrentNumber();
 
-    await _playAt(0);
+    // Play the three clips one after another, with a small gap.
+    await _runIntroSequence();
   }
 
   @override
   void dispose() {
     debugPrint('SettingsController: dispose()');
     _disposed = true;
-    _completeSub?.cancel();
+    _stopped  = true;
     _player.dispose();
     super.dispose();
   }
@@ -67,36 +91,66 @@ class SettingsController extends ChangeNotifier {
   // Public API
   // ──────────────────────────────────────────────────────────────────
 
-  /// Stop any audio that may still be playing and prevent any queued
-  /// onComplete handler from auto-advancing.
+  /// Stop any audio that may still be playing and prevent the sequence
+  /// loop from advancing to the next clip.
   Future<void> stopAudio() async {
-    // Push the index past the end so _playNextInSequence becomes a no-op
-    // even if onPlayerComplete fires after we've called stop().
-    _seqIndex = _introSequence.length;
+    _stopped = true;
     try { await _player.stop(); } catch (_) {}
   }
 
-  // ──────────────────────────────────────────────────────────────────
-  // Internal sequence helpers
-  // ──────────────────────────────────────────────────────────────────
-
-  Future<void> _playAt(int i) async {
-    if (_disposed || i >= _introSequence.length) return;
-    _seqIndex = i;
-    debugPrint('🔊 settings play [$i]: ${_introSequence[i]}');
+  /// Re-read the saved emergency number from storage. Call this on screen
+  /// init and again whenever returning from the SetupScreen so the UI
+  /// reflects any change the user just made.
+  Future<void> refreshCurrentNumber() async {
     try {
-      await _player.stop();
-      await _player.play(AssetSource(_introSequence[i]));
+      _currentNumber = await Prefs.getEmergencyNumber();
+      if (_disposed) return;
+      notifyListeners();
     } catch (e) {
-      debugPrint('🔊 settings audio error: $e');
+      debugPrint('🚨 settings refreshCurrentNumber: $e');
     }
   }
 
-  Future<void> _playNextInSequence() async {
-    if (_disposed) return;
-    final next = _seqIndex + 1;
-    if (next < _introSequence.length) {
-      await _playAt(next);
+  // ──────────────────────────────────────────────────────────────────
+  // Sequence
+  // ──────────────────────────────────────────────────────────────────
+
+  Future<void> _runIntroSequence() async {
+    for (var i = 0; i < _introSequence.length; i++) {
+      if (_disposed || _stopped) return;
+      await _playAndWait(_introSequence[i]);
+      if (_disposed || _stopped) return;
+
+      // Small breathing room between clips, but only between — not after
+      // the last one.
+      if (i < _introSequence.length - 1) {
+        await Future.delayed(_gapBetweenClips);
+      }
+    }
+  }
+
+  /// Play a single asset and wait until `onPlayerComplete` fires (or until
+  /// [_clipTimeout] elapses as a safety net).
+  ///
+  /// Note: we deliberately do NOT call `_player.stop()` before play(). The
+  /// player is configured fresh, the sequence is strictly sequential, and
+  /// an unnecessary stop() adds noticeable startup latency on Android.
+  Future<void> _playAndWait(String path) async {
+    debugPrint('🔊 settings play: $path');
+    final completer = Completer<void>();
+    final sub = _player.onPlayerComplete.listen((_) {
+      if (!completer.isCompleted) completer.complete();
+    });
+    try {
+      await _player.play(AssetSource(path));
+      await completer.future.timeout(
+        _clipTimeout,
+        onTimeout: () => debugPrint('🔊 settings audio timeout: $path'),
+      );
+    } catch (e) {
+      debugPrint('🔊 settings audio error ($path): $e');
+    } finally {
+      await sub.cancel();
     }
   }
 }
