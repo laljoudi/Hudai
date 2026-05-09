@@ -16,6 +16,8 @@ class _SetupAudio {
   static const String afterConfirm   = 'audio/setup/after_confirm_options.mp3';
   static const String processing     = 'audio/setup/processing_number.mp3';
   static const String invalidVoice   = 'audio/setup/invalid_voice_input.mp3';
+  static const String manualIntro    = 'audio/setup/manual_input_intro.mp3';
+  static const String tapToSave      = 'audio/setup/tap_to_save.mp3';
 
   // Digit files 0–9, played one-by-one when reading back the number.
   static const String d0 = 'audio/setup/0.mp3';
@@ -169,12 +171,20 @@ class SetupController extends ChangeNotifier {
   }
 
   /// Double tap → manual mode. Ignored during intro.
+  ///
+  /// Manual mode audio policy:
+  ///   - Stop any audio currently playing.
+  ///   - Switch UI to the manual input state immediately.
+  ///   - Play `manual_input_intro.mp3` once.
+  ///   - After that, no further audio is played in manual mode.
   Future<void> onDoubleTap() async {
     if (_stage == SetupStage.intro) return;
     debugPrint('👆👆 onDoubleTap → manual');
 
     await _cancelEverything();
     _setStage(SetupStage.manual);
+
+    await _playAndWait(_SetupAudio.manualIntro);
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -375,6 +385,10 @@ class SetupController extends ChangeNotifier {
     }
 
     await _playAndWait(_SetupAudio.afterConfirm);
+    if (_disposed || _stage != SetupStage.confirming) return;
+
+    // Final cue once the digits are recognized + confirmed on screen.
+    await _playAndWait(_SetupAudio.tapToSave);
     if (_disposed || _stage != SetupStage.confirming) return;
 
     // 8. Save and signal navigation
