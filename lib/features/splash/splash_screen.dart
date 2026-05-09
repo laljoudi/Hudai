@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:gp_hudai/app/app_routes.dart';
+import 'package:gp_hudai/core/storage/prefs.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -16,7 +17,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _navigateTimer = Timer(const Duration(milliseconds: 3000), _goToVoice);
+    _navigateTimer = Timer(const Duration(milliseconds: 3000), _routeNext);
   }
 
   @override
@@ -25,9 +26,19 @@ class _SplashScreenState extends State<SplashScreen> {
     super.dispose();
   }
 
-  void _goToVoice() {
+  /// First-launch detection:
+  ///   - emergency number already saved → go directly to camera
+  ///   - no number saved              → onboarding (voice instructions → setup)
+  ///
+  /// The number can only be edited later from the Settings screen.
+  Future<void> _routeNext() async {
     if (!mounted) return;
-    Navigator.pushReplacementNamed(context, AppRoutes.voiceInstructions);
+    final hasNumber = await Prefs.hasEmergencyNumber();
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(
+      context,
+      hasNumber ? AppRoutes.camera : AppRoutes.voiceInstructions,
+    );
   }
 
   @override
