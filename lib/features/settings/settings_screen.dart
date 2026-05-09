@@ -32,6 +32,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     super.initState();
 
     _controller = SettingsController();
+    _controller.addListener(_onControllerUpdate);
     _controller.initialize();
 
     _glowCtrl = AnimationController(
@@ -45,9 +46,14 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   void dispose() {
+    _controller.removeListener(_onControllerUpdate);
     _controller.dispose();
     _glowCtrl.dispose();
     super.dispose();
+  }
+
+  void _onControllerUpdate() {
+    if (mounted) setState(() {});
   }
 
   // ── Tap handlers ──────────────────────────────────────────────────────
@@ -63,7 +69,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     debugPrint('👆 settings: open emergency edit');
     await _controller.stopAudio();
     if (!mounted) return;
-    Navigator.pushNamed(context, AppRoutes.setup);
+    await Navigator.pushNamed(context, AppRoutes.setup);
+    // Returned from the setup screen — reload in case the user changed it.
+    if (!mounted) return;
+    _controller.refreshCurrentNumber();
   }
 
   // ── Build ─────────────────────────────────────────────────────────────
@@ -109,7 +118,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       builder: (_, __) => _SettingsTile(
                         icon: Icons.phone_in_talk_rounded,
                         title: 'تعديل رقم الطوارئ',
-                        subtitle: 'تغيير رقم جهة الاتصال في حالات الطوارئ',
+                        currentNumber: _controller.currentNumber,
                         glow: _glowAnim.value,
                         onTap: _onEditEmergencyTap,
                       ),
@@ -175,14 +184,14 @@ class _SettingsTile extends StatelessWidget {
   const _SettingsTile({
     required this.icon,
     required this.title,
-    required this.subtitle,
+    required this.currentNumber,
     required this.glow,
     required this.onTap,
   });
 
   final IconData     icon;
   final String       title;
-  final String       subtitle;
+  final String?      currentNumber;
   final double       glow;
   final VoidCallback onTap;
 
@@ -242,7 +251,7 @@ class _SettingsTile extends StatelessWidget {
 
                 const SizedBox(width: 14),
 
-                // Title + subtitle
+                // Title + current number (or "not set" hint)
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -256,15 +265,8 @@ class _SettingsTile extends StatelessWidget {
                           letterSpacing: -0.2,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.55),
-                          fontSize: 13,
-                          height: 1.4,
-                        ),
-                      ),
+                      const SizedBox(height: 6),
+                      _CurrentNumberLine(number: currentNumber),
                     ],
                   ),
                 ),
@@ -281,6 +283,49 @@ class _SettingsTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Inline display of the currently saved emergency number (or hint if none).
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _CurrentNumberLine extends StatelessWidget {
+  const _CurrentNumberLine({required this.number});
+  final String? number;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasNumber = number != null && number!.trim().isNotEmpty;
+    return Row(
+      children: [
+        Text(
+          'الرقم الحالي:',
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.55),
+            fontSize: 13,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            hasNumber ? number! : 'غير محفوظ',
+            // Force LTR for the number so digits read left-to-right even
+            // inside an RTL row.
+            textDirection: TextDirection.ltr,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: hasNumber
+                  ? const Color(0xFF40E0FF)
+                  : Colors.white.withOpacity(0.45),
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              letterSpacing: hasNumber ? 1.5 : 0.2,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
