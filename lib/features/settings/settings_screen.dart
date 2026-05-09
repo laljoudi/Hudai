@@ -1,19 +1,343 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
-class SettingsScreen extends StatelessWidget {
+import 'package:gp_hudai/app/app_routes.dart';
+import 'package:gp_hudai/features/settings/settings_controller.dart';
+
+/// Settings screen — UI only.
+///
+/// Two tap zones (per spec):
+///   - Top-left corner  → small "back" tap area  → Navigator.pop
+///   - Anywhere else    → opens emergency-number edit (reuses SetupScreen)
+///
+/// All audio + state lives in [SettingsController].
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen>
+    with TickerProviderStateMixin {
+  late final SettingsController _controller;
+
+  // Subtle ambient glow — view-only, no app state.
+  late final AnimationController _glowCtrl;
+  late final Animation<double>   _glowAnim;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = SettingsController();
+    _controller.initialize();
+
+    _glowCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    )..repeat(reverse: true);
+    _glowAnim = Tween<double>(begin: 0.55, end: 1.0).animate(
+      CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _glowCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── Tap handlers ──────────────────────────────────────────────────────
+
+  Future<void> _onBackTap() async {
+    debugPrint('👆 settings: back');
+    await _controller.stopAudio();
+    if (!mounted) return;
+    Navigator.pop(context);
+  }
+
+  Future<void> _onEditEmergencyTap() async {
+    debugPrint('👆 settings: open emergency edit');
+    await _controller.stopAudio();
+    if (!mounted) return;
+    Navigator.pushNamed(context, AppRoutes.setup);
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('الإعدادات'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color.fromARGB(156, 201, 203, 230)),
-          onPressed: () => Navigator.pop(context),
+      backgroundColor: const Color(0xFF030A20),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const _Background(),
+
+          // Main full-screen tap zone → opens emergency-number edit.
+          // (Whole area is tappable for blind-user accessibility, but
+          // visually it's a normal settings page with an option card.)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _onEditEmergencyTap,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 90),
+
+                    const Text(
+                      'الإعدادات',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 30,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+
+                    const SizedBox(height: 36),
+
+                    AnimatedBuilder(
+                      animation: _glowAnim,
+                      builder: (_, __) => _SettingsTile(
+                        icon: Icons.phone_in_talk_rounded,
+                        title: 'تعديل رقم الطوارئ',
+                        subtitle: 'تغيير رقم جهة الاتصال في حالات الطوارئ',
+                        glow: _glowAnim.value,
+                        onTap: _onEditEmergencyTap,
+                      ),
+                    ),
+
+                    const Spacer(),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Back tap zone — small top-left corner. Sits above the main
+          // GestureDetector so taps here go back instead of opening edit.
+          Positioned(
+            top: 0,
+            left: 0,
+            child: SafeArea(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _onBackTap,
+                child: const _BackBadge(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Background — same radial gradient as the rest of the app
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _Background extends StatelessWidget {
+  const _Background();
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment(0.0, 0.0),
+          radius: 1.0,
+          colors: [
+            Color(0xFF1A3A8A),
+            Color(0xFF0E2360),
+            Color(0xFF071540),
+            Color(0xFF030A20),
+          ],
+          stops: [0.0, 0.30, 0.65, 1.0],
         ),
       ),
-     
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Glassy settings option tile (list-style, with leading icon + chevron).
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SettingsTile extends StatelessWidget {
+  const _SettingsTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.glow,
+    required this.onTap,
+  });
+
+  final IconData     icon;
+  final String       title;
+  final String       subtitle;
+  final double       glow;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 18, vertical: 18,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withOpacity(0.20)),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF1855FF).withOpacity(0.20 + 0.15 * glow),
+                  blurRadius:   28,
+                  spreadRadius: 1,
+                ),
+                BoxShadow(
+                  color: const Color(0xFF00CFFF).withOpacity(0.12 * glow),
+                  blurRadius:   45,
+                  spreadRadius: 4,
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                // Leading glassy icon chip
+                Container(
+                  width:  56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF40E0FF), Color(0xFF1855FF)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF1855FF).withOpacity(0.45),
+                        blurRadius:   20,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: Icon(icon, color: Colors.white, size: 28),
+                ),
+
+                const SizedBox(width: 14),
+
+                // Title + subtitle
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.55),
+                          fontSize: 13,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: Colors.white.withOpacity(0.55),
+                  size: 16,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Glassy back badge in the top-left corner.
+//  Visually hints at "back" without being a tiny iOS-style chevron — the
+//  actual hit area extends well past the visible chip.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _BackBadge extends StatelessWidget {
+  const _BackBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, left: 10),
+      child: SizedBox(
+        // Generous tap area for blind/low-vision users.
+        width:  110,
+        height: 110,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(22),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                child: Container(
+                  width:  64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.20),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF1855FF).withOpacity(0.25),
+                        blurRadius:   18,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.arrow_back_ios_new,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
