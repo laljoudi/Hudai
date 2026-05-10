@@ -43,7 +43,9 @@ class _SetupAudio {
 ///   listening       — microphone is open, capturing speech
 ///   processing      — processing_number is playing + parsing digits
 ///   invalid         — invalid_voice_input is playing
-///   confirming      — confirm_number → digits → after_confirm_options
+///   confirming      — confirm_number → digits → after_confirm_options → tap_to_save
+///   awaitingSave    — tap_to_save finished; waiting for user gesture
+///                       (single tap → retry voice; double tap → save + go)
 ///   saving          — persisting to Prefs (after a valid voice input)
 ///   manual          — silent manual mode (text field)
 enum SetupStage {
@@ -54,6 +56,7 @@ enum SetupStage {
   processing,
   invalid,
   confirming,
+  awaitingSave,
   saving,
   manual,
 }
@@ -99,6 +102,7 @@ class SetupController extends ChangeNotifier {
       case SetupStage.processing:      return 'جارٍ المعالجة...';
       case SetupStage.invalid:         return 'لم يتم التعرف على الرقم';
       case SetupStage.confirming:      return 'تأكيد الرقم...';
+      case SetupStage.awaitingSave:    return 'ضغطة واحدة لإعادة المحاولة، ضغطتان للحفظ';
       case SetupStage.saving:          return 'جارٍ الحفظ...';
       case SetupStage.manual:          return '';
     }
@@ -149,8 +153,9 @@ class SetupController extends ChangeNotifier {
   // ──────────────────────────────────────────────────────────────────
 
   /// Single tap behaviour:
-  ///   - if currently listening → stop the mic and process what was heard
-  ///   - otherwise → start the voice flow (start_listening → mic → STT)
+  ///   - listening                → stop the mic and process what was heard
+  ///   - awaitingSave (post tap_to_save) → retry voice input from scratch
+  ///   - otherwise                → start the voice flow (start_listening → mic → STT)
   /// Ignored during intro & saving.
   Future<void> onSingleTap() async {
     if (inputLocked) return;
@@ -165,22 +170,35 @@ class SetupController extends ChangeNotifier {
       return;
     }
 
+    // After tap_to_save: a single tap means "retry voice from scratch".
+    if (_stage == SetupStage.awaitingSave) {
+      debugPrint('🔄 awaitingSave → retry voice');
+      await _cancelEverything();
+      await _runVoiceFlow();
+      return;
+    }
+
     // Any other stage → start a fresh voice flow.
     await _cancelEverything();
     await _runVoiceFlow();
   }
 
-  /// Double tap → manual mode. Ignored during intro.
-  ///
-  /// Manual mode audio policy:
-  ///   - Stop any audio currently playing.
-  ///   - Switch UI to the manual input state immediately.
-  ///   - Play `manual_input_intro.mp3` once.
-  ///   - After that, no further audio is played in manual mode.
+  /// Double tap behaviour:
+  ///   - awaitingSave (post tap_to_save) → save the number and navigate
+  ///   - otherwise                       → switch to manual (silent) mode
+  /// Ignored during intro.
   Future<void> onDoubleTap() async {
     if (_stage == SetupStage.intro) return;
-    debugPrint('👆👆 onDoubleTap → manual');
+    debugPrint('👆👆 onDoubleTap (stage=$_stage)');
 
+    // After tap_to_save: a double tap means "confirm, save & go".
+    if (_stage == SetupStage.awaitingSave) {
+      debugPrint('💾 awaitingSave → save + navigate');
+      await _saveAndNavigate(_recognizedNumber);
+      return;
+    }
+
+    debugPrint('👆👆 onDoubleTap → manual');
     await _cancelEverything();
     _setStage(SetupStage.manual);
 
@@ -391,15 +409,30 @@ class SetupController extends ChangeNotifier {
     await _playAndWait(_SetupAudio.tapToSave);
     if (_disposed || _stage != SetupStage.confirming) return;
 
-    // 8. Save and signal navigation
+    // 8. Wait for the user's final gesture.
+    //    Single tap → retry voice (handled in onSingleTap)
+    //    Double tap → save + navigate (handled in onDoubleTap → _saveAndNavigate)
+    _setStage(SetupStage.awaitingSave);
+  }
+
+  /// Persist the recognized number and signal navigation. Triggered by a
+  /// double-tap while in [SetupStage.awaitingSave].
+  Future<void> _saveAndNavigate(String digits) async {
+    if (_stage == SetupStage.saving) return;
+    if (!_isValidNumber(digits)) {
+      debugPrint('🚨 _saveAndNavigate: invalid number "$digits"');
+      await _handleInvalid();
+      return;
+    }
     _setStage(SetupStage.saving);
     try {
       await Prefs.saveEmergencyNumber(digits);
+      if (_disposed) return;
       _shouldNavigate = true;
       notifyListeners();
     } catch (e) {
       debugPrint('🚨 save failed: $e');
-      _setStage(SetupStage.idle);
+      _setStage(SetupStage.awaitingSave);
     }
   }
 

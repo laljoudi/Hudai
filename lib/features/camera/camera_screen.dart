@@ -43,13 +43,18 @@ class _CameraScreenState extends State<CameraScreen> {
   void _onControllerUpdate() {
     if (mounted) setState(() {});
   }
-  
 
   // ───────────────────────────────────────────────────────────────────
   //  Settings — handled in the view because navigation needs context.
   // ───────────────────────────────────────────────────────────────────
-  void _onSettingsTap() {
-    Navigator.pushNamed(context, AppRoutes.settings);
+  Future<void> _onSettingsTap() async {
+    await _controller.suspendForSettings();
+    if (!mounted) return;
+
+    await Navigator.pushNamed(context, AppRoutes.settings);
+
+    if (!mounted) return;
+    await _controller.resumeFromSettings();
   }
 
   // ───────────────────────────────────────────────────────────────────
@@ -77,16 +82,13 @@ class _CameraScreenState extends State<CameraScreen> {
           ),
 
           // Layer 3 — Visual glassy footer (bottom corners icons)
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: _buildGlassyFooter(),
-          ),
+          Align(alignment: Alignment.bottomCenter, child: _buildGlassyFooter()),
         ],
       ),
     );
   }
 
- /// Three-section tap layout (replaces the old 2x2 quadrant grid).
+  /// Three-section tap layout (replaces the old 2x2 quadrant grid).
   ///
   /// Top section    (top 30%):  Settings (left) + Emergency call (right)
   /// Middle section (middle 40%): Dead zone — taps ignored on purpose
@@ -109,19 +111,16 @@ class _CameraScreenState extends State<CameraScreen> {
 
         // ── MIDDLE DEAD ZONE (40% of height) ────────────────────────
         // Uses IgnorePointer so taps pass through to nothing — no action.
-        const Expanded(
-          flex: 4,
-          child: IgnorePointer(
-            child: SizedBox.expand(),
-          ),
-        ),
+        const Expanded(flex: 4, child: IgnorePointer(child: SizedBox.expand())),
 
         // ── BOTTOM SECTION (30% of height) ──────────────────────────
         Expanded(
           flex: 3,
           child: Row(
             children: [
-              Expanded(child: _quadrant(onTap: _controller.onReplayInstructionsTap)),
+              Expanded(
+                child: _quadrant(onTap: _controller.onReplayInstructionsTap),
+              ),
               Expanded(child: _quadrant(onTap: _controller.onLocationTap)),
             ],
           ),
@@ -226,7 +225,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (_controller.useMockCamera) return _buildMockCamera();
 
     final initFuture = _controller.initializeFuture;
-    final cam        = _controller.cameraController;
+    final cam = _controller.cameraController;
 
     if (initFuture == null || cam == null) {
       return const ColoredBox(color: Color(0xFF030A20));
@@ -238,13 +237,30 @@ class _CameraScreenState extends State<CameraScreen> {
         if (snapshot.connectionState != ConnectionState.done) {
           return const ColoredBox(color: Color(0xFF030A20));
         }
-final camAspect = cam.value.aspectRatio;
 
-        return AspectRatio(
-  aspectRatio: camAspect,
-  child: CameraPreview(cam),
-);
+        return _buildFullScreenPreview(
+          CameraPreview(cam),
+          cam.value.aspectRatio,
+        );
       },
+    );
+  }
+
+  Widget _buildFullScreenPreview(Widget preview, double cameraAspectRatio) {
+    final screenSize = MediaQuery.sizeOf(context);
+    final screenAspectRatio = screenSize.width / screenSize.height;
+
+    // CameraPreview reports landscape-oriented aspect ratios on many devices.
+    // In portrait, invert it before cover-scaling so the preview fills the
+    // screen instead of rendering as a small letterboxed rectangle.
+    final portraitCameraAspectRatio = 1 / cameraAspectRatio;
+    final scale = portraitCameraAspectRatio / screenAspectRatio;
+
+    return ClipRect(
+      child: Transform.scale(
+        scale: scale < 1 ? 1 / scale : scale,
+        child: Center(child: preview),
+      ),
     );
   }
 
@@ -295,13 +311,13 @@ class _GlassyIconBadge extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
-          width:  46,
+          width: 46,
           height: 46,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: LinearGradient(
               begin: Alignment.topLeft,
-              end:   Alignment.bottomRight,
+              end: Alignment.bottomRight,
               colors: [
                 Colors.white.withOpacity(0.22),
                 const Color(0xFF40E0FF).withOpacity(0.10),
@@ -313,8 +329,8 @@ class _GlassyIconBadge extends StatelessWidget {
             ),
             boxShadow: [
               BoxShadow(
-                color:        const Color(0xFF1855FF).withOpacity(0.18),
-                blurRadius:   12,
+                color: const Color(0xFF1855FF).withOpacity(0.18),
+                blurRadius: 12,
                 spreadRadius: 1,
               ),
             ],

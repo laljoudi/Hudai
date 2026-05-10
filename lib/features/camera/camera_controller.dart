@@ -23,10 +23,11 @@ const bool kForceMockCamera = false;
 /// Audio file paths used by the camera screen.
 /// Note: audioplayers uses paths WITHOUT the 'assets/' prefix.
 class _CameraAudio {
-  static const String intro                = 'audio/camera/camera_intro.mp3';
-  static const String insideArafat         = 'audio/location/inside_arafat.mp3';
-  static const String outsideArafat        = 'audio/location/outside_arafat.mp3';
-  static const String locationUnavailable  = 'audio/location/location_unavailable.mp3';
+  static const String intro = 'audio/camera/camera_intro.mp3';
+  static const String insideArafat = 'audio/location/inside_arafat.mp3';
+  static const String outsideArafat = 'audio/location/outside_arafat.mp3';
+  static const String locationUnavailable =
+      'audio/location/location_unavailable.mp3';
 }
 
 /// The brain of the camera screen.
@@ -40,21 +41,21 @@ class CameraController extends ChangeNotifier {
   // ──────────────────────────────────────────────────────────────────
   // Services
   // ──────────────────────────────────────────────────────────────────
-  final YoloService          _yoloService       = YoloService();
-  final FramePreprocessor    _preprocessor      = const FramePreprocessor();
-  final DetectionDecoder     _decoder           = const DetectionDecoder();
-  final InferenceThrottler   _throttler         = InferenceThrottler();
-  final LocationService      _locationService   = const LocationService();
-  final PermissionService    _permissionService = const PermissionService();
-  final AudioService             _audioService = AudioService();
-  late final SceneService        _sceneService;
-  final DetectionToSceneAdapter  _adapter      = const DetectionToSceneAdapter();
-  final PhoneService             _phoneService = const PhoneService();
-  List<List<List<double>>>?      _inferenceOutput;
-  List<double>?                  _flatOutput;
+  final YoloService _yoloService = YoloService();
+  final FramePreprocessor _preprocessor = const FramePreprocessor();
+  final DetectionDecoder _decoder = const DetectionDecoder();
+  final InferenceThrottler _throttler = InferenceThrottler();
+  final LocationService _locationService = const LocationService();
+  final PermissionService _permissionService = const PermissionService();
+  final AudioService _audioService = AudioService();
+  late final SceneService _sceneService;
+  final DetectionToSceneAdapter _adapter = const DetectionToSceneAdapter();
+  final PhoneService _phoneService = const PhoneService();
+  List<List<List<double>>>? _inferenceOutput;
+  List<double>? _flatOutput;
 
   cam.CameraController? _cameraController;
-  Future<void>?         _initializeFuture;
+  Future<void>? _initializeFuture;
 
   // ──────────────────────────────────────────────────────────────────
   // Public state
@@ -63,18 +64,19 @@ class CameraController extends ChangeNotifier {
   CameraState get state => _state;
 
   cam.CameraController? get cameraController => _cameraController;
-  Future<void>?         get initializeFuture => _initializeFuture;
+  Future<void>? get initializeFuture => _initializeFuture;
 
-  bool   _useMockCamera = false;
+  bool _useMockCamera = false;
   String? _cameraError;
-  bool    _locationBusy = false;
-  bool    _systemAudioBusy = false;
+  bool _locationBusy = false;
+  bool _systemAudioBusy = false;
   String? _lastSystemAudioPath;
-  bool    _cameraStarting = false;
+  bool _cameraStarting = false;
+  bool _processingEnabled = true;
 
-  bool   get useMockCamera => _useMockCamera;
-  String? get cameraError  => _cameraError;
-  bool   get locationBusy  => _locationBusy;
+  bool get useMockCamera => _useMockCamera;
+  String? get cameraError => _cameraError;
+  bool get locationBusy => _locationBusy;
 
   // ──────────────────────────────────────────────────────────────────
   // Lifecycle
@@ -82,7 +84,7 @@ class CameraController extends ChangeNotifier {
 
   /// Initialize everything: camera, AI model, audio intro.
   /// Call once when the screen opens.
-Future<void> initialize() async {
+  Future<void> initialize() async {
     _sceneService = SceneService(audioService: _audioService);
     debugPrint('🎬 CameraController: initialize()');
 
@@ -100,7 +102,7 @@ Future<void> initialize() async {
     await _startFrameStream();
   }
 
- @override
+  @override
   void dispose() {
     debugPrint('🛑 CameraController: dispose()');
 
@@ -129,7 +131,7 @@ Future<void> initialize() async {
       final cameras = await cam.availableCameras();
       if (cameras.isEmpty) {
         _useMockCamera = true;
-        _cameraError   = 'لا توجد كاميرا متاحة، تم تفعيل الوضع التجريبي.';
+        _cameraError = 'لا توجد كاميرا متاحة، تم تفعيل الوضع التجريبي.';
         notifyListeners();
         return;
       }
@@ -139,7 +141,10 @@ Future<void> initialize() async {
         orElse: () => cameras.first,
       );
 
-      final preset = cam.ResolutionPreset.medium;
+      // `medium` makes the live preview visibly soft on iPhone.
+      // `high` is the best default here: much sharper preview than medium,
+      // while still leaving enough headroom for the 640x640 AI pipeline.
+      final preset = cam.ResolutionPreset.high;
 
       _cameraController = cam.CameraController(
         back,
@@ -157,14 +162,21 @@ Future<void> initialize() async {
           DeviceOrientation.portraitUp,
         );
       } catch (_) {}
+      try {
+        await _cameraController!.setFocusMode(cam.FocusMode.auto);
+      } catch (_) {}
+      try {
+        await _cameraController!.setExposureMode(cam.ExposureMode.auto);
+      } catch (_) {}
 
       _updateState(_state.copyWith(isCameraReady: true));
     } catch (_) {
       _useMockCamera = true;
-      _cameraError   = 'تعذر تشغيل الكاميرا، تم تفعيل الوضع التجريبي.';
+      _cameraError = 'تعذر تشغيل الكاميرا، تم تفعيل الوضع التجريبي.';
       notifyListeners();
     }
   }
+
   /// Subscribe to the camera's frame stream.
   /// Each frame is sent to _onCameraFrame() for processing.
   Future<void> _startFrameStream() async {
@@ -191,6 +203,8 @@ Future<void> initialize() async {
   /// Called for every camera frame (~30 times per second).
   /// Runs the full AI pipeline at ~3 FPS via the throttler.
   Future<void> _onCameraFrame(cam.CameraImage image) async {
+    if (!_processingEnabled) return;
+
     // 1. Throttle — drop most frames, keep ~3 per second
     if (!_throttler.shouldProcess()) return;
 
@@ -248,9 +262,9 @@ Future<void> initialize() async {
       // We intentionally avoid rebuilding the full camera UI on each
       // detection delta to keep preview smooth.
       _state = _state.copyWith(
-        framesProcessed:   newCount,
+        framesProcessed: newCount,
         currentDetections: detections,
-        isInferring:       false,
+        isInferring: false,
       );
 
       // Log occasionally so we know it's alive
@@ -304,7 +318,7 @@ Future<void> initialize() async {
     }
   }
 
-Future<void> _playIntroOnce() async {
+  Future<void> _playIntroOnce() async {
     await Future.delayed(const Duration(milliseconds: 800));
 
     // Play intro and wait until it finishes.
@@ -316,13 +330,42 @@ Future<void> _playIntroOnce() async {
 
   Future<void> _interruptAllAudio() async {
     await _sceneService.stop();
+    await _audioService.stop();
+  }
+
+  Future<void> _stopFrameStream() async {
+    final controller = _cameraController;
+    if (controller == null) return;
+    if (!controller.value.isStreamingImages) return;
+
+    try {
+      await controller.stopImageStream();
+    } catch (_) {}
+  }
+
+  /// Called before navigating to Settings.
+  /// Stops live detection and silences any in-flight camera audio.
+  Future<void> suspendForSettings() async {
+    _processingEnabled = false;
+    _systemAudioBusy = true;
+    await _interruptAllAudio();
+    await _stopFrameStream();
+    _throttler.reset();
+  }
+
+  /// Called after returning from Settings.
+  /// Resumes live detection stream again.
+  Future<void> resumeFromSettings() async {
+    _systemAudioBusy = false;
+    _processingEnabled = true;
+    await _startFrameStream();
   }
 
   // ──────────────────────────────────────────────────────────────────
   // User actions (called by view when a quadrant is tapped)
   // ──────────────────────────────────────────────────────────────────
 
- // ── Emergency call double-tap state ────────────────────────────
+  // ── Emergency call double-tap state ────────────────────────────
   /// Timestamp of the first tap. Reset to 0 after the call or timeout.
   int _firstEmergencyTapMs = 0;
 
@@ -359,7 +402,8 @@ Future<void> _playIntroOnce() async {
       await _playAudio(_CameraAudio.locationUnavailable); // reuse error audio
     }
   }
- /// Bottom-left: replay the last spoken instruction.
+
+  /// Bottom-left: replay the last spoken instruction.
   /// If no AI instruction has been spoken yet, falls back to camera intro.
   /// Bottom-left: replay the last spoken AI instruction.
   /// If no AI instruction has been played yet, falls back to camera intro.

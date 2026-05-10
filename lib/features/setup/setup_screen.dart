@@ -7,9 +7,11 @@ import 'package:gp_hudai/features/setup/setup_controller.dart';
 
 /// Setup screen — UI only.
 ///
-/// Interaction rules (per spec):
-///   - Single tap → start voice flow
-///   - Double tap → switch to manual (silent) mode
+/// Interaction rules:
+///   - Single tap → start voice flow (or stop mic if listening, or retry
+///     when in awaitingSave)
+///   - Double tap → switch to manual (silent) mode (or save+navigate when
+///     in awaitingSave)
 ///   - Taps are ignored while the intro audio is playing
 class SetupScreen extends StatefulWidget {
   const SetupScreen({super.key});
@@ -161,12 +163,13 @@ class _SetupScreenState extends State<SetupScreen>
 
             // Live recognition feedback:
             //   - while listening → show raw heard text
-            //   - confirming/saving → show the parsed digits
+            //   - confirming/awaitingSave/saving → show the parsed digits
             Builder(builder: (_) {
               final showLive = _controller.stage == SetupStage.listening &&
                   _controller.heardText.isNotEmpty;
               final showFinal = _controller.recognizedNumber.isNotEmpty &&
                   (_controller.stage == SetupStage.confirming ||
+                   _controller.stage == SetupStage.awaitingSave ||
                    _controller.stage == SetupStage.saving);
               if (!showLive && !showFinal) return const SizedBox.shrink();
 
@@ -473,4 +476,3 @@ class _GlowingSaveButton extends StatelessWidget {
     );
   }
 }
-

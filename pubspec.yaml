@@ -38,6 +38,7 @@ flutter:
     - assets/audio/location/
     - assets/audio/setup/
     - assets/audio/onboarding/
+    - assets/audio/settings/
     - assets/audio/detection/
     - assets/audio/detection/safety/
     - assets/audio/detection/camera_guidance/
