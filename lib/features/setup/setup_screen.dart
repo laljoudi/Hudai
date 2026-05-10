@@ -102,7 +102,7 @@ class _SetupScreenState extends State<SetupScreen>
     return GestureDetector(
       key: const ValueKey('voice'),
       behavior: HitTestBehavior.opaque,
-      onTap:       _controller.onSingleTap,
+      onTap: _controller.onSingleTap,
       onDoubleTap: _controller.onDoubleTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -164,39 +164,45 @@ class _SetupScreenState extends State<SetupScreen>
             // Live recognition feedback:
             //   - while listening → show raw heard text
             //   - confirming/awaitingSave/saving → show the parsed digits
-            Builder(builder: (_) {
-              final showLive = _controller.stage == SetupStage.listening &&
-                  _controller.heardText.isNotEmpty;
-              final showFinal = _controller.recognizedNumber.isNotEmpty &&
-                  (_controller.stage == SetupStage.confirming ||
-                   _controller.stage == SetupStage.awaitingSave ||
-                   _controller.stage == SetupStage.saving);
-              if (!showLive && !showFinal) return const SizedBox.shrink();
+            Builder(
+              builder: (_) {
+                final showLive =
+                    _controller.stage == SetupStage.listening &&
+                    _controller.heardText.isNotEmpty;
+                final showFinal =
+                    _controller.recognizedNumber.isNotEmpty &&
+                    (_controller.stage == SetupStage.confirming ||
+                        _controller.stage == SetupStage.awaitingSave ||
+                        _controller.stage == SetupStage.saving);
+                if (!showLive && !showFinal) return const SizedBox.shrink();
 
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 18, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withOpacity(0.20)),
-                ),
-                child: Text(
-                  showFinal
-                      ? _controller.recognizedNumber
-                      : _controller.heardText,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: showFinal
-                        ? const Color(0xFF40E0FF)
-                        : Colors.white.withOpacity(0.85),
-                    fontSize: showFinal ? 22 : 18,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: showFinal ? 2.5 : 0.5,
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 10,
                   ),
-                ),
-              );
-            }),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.20)),
+                  ),
+                  child: Text(
+                    showFinal
+                        ? _controller.recognizedNumber
+                        : _controller.heardText,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: showFinal
+                          ? const Color(0xFF40E0FF)
+                          : Colors.white.withOpacity(0.85),
+                      fontSize: showFinal ? 22 : 18,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: showFinal ? 2.5 : 0.5,
+                    ),
+                  ),
+                );
+              },
+            ),
 
             const Spacer(),
           ],
@@ -262,11 +268,10 @@ class _SetupScreenState extends State<SetupScreen>
       ),
     );
   }
-
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Background gradient
+//  Background gradient — same as the voice instructions screen
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Background extends StatelessWidget {
@@ -275,16 +280,16 @@ class _Background extends StatelessWidget {
   Widget build(BuildContext context) {
     return const DecoratedBox(
       decoration: BoxDecoration(
-        gradient: RadialGradient(
-          center: Alignment(0.0, 0.0),
-          radius: 1.0,
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
           colors: [
-            Color(0xFF1A3A8A),
-            Color(0xFF0E2360),
-            Color(0xFF071540),
             Color(0xFF030A20),
+            Color(0xFF071540),
+            Color(0xFF0E2360),
+            Color(0xFF1A3A8A),
           ],
-          stops: [0.0, 0.30, 0.65, 1.0],
+          stops: [0.0, 0.50, 0.75, 1.0],
         ),
       ),
     );
@@ -303,12 +308,12 @@ class _MicOrb extends StatelessWidget {
   });
 
   final double pulse;
-  final bool   listening;
-  final bool   dim;
+  final bool listening;
+  final bool dim;
 
   @override
   Widget build(BuildContext context) {
-    final glow  = 0.35 + pulse * 0.45;
+    final glow = 0.35 + pulse * 0.45;
     final scale = 1.0 + pulse * 0.10;
     return Opacity(
       opacity: dim ? 0.4 : 1.0,
@@ -324,8 +329,9 @@ class _MicOrb extends StatelessWidget {
                 height: 220 * scale,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFF40E0FF)
-                      .withOpacity(0.10 + pulse * 0.10),
+                  color: const Color(
+                    0xFF40E0FF,
+                  ).withOpacity(0.10 + pulse * 0.10),
                 ),
               ),
             Container(
@@ -403,14 +409,17 @@ class _GlassyTextField extends StatelessWidget {
             decoration: InputDecoration(
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(
-                vertical: 22, horizontal: 16,
+                vertical: 22,
+                horizontal: 16,
               ),
               hintText: '+966',
               hintStyle: TextStyle(
-                color: Colors.white.withOpacity(0.30), fontSize: 18,
+                color: Colors.white.withOpacity(0.30),
+                fontSize: 18,
               ),
               errorStyle: const TextStyle(
-                color: Color(0xFFFF8A8A), fontSize: 12,
+                color: Color(0xFFFF8A8A),
+                fontSize: 12,
               ),
             ),
           ),
@@ -445,21 +454,25 @@ class _GlowingSaveButton extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: const Color(0xFF1855FF).withOpacity(0.55),
-              blurRadius: 32, spreadRadius: 1,
+              blurRadius: 32,
+              spreadRadius: 1,
               offset: const Offset(0, 6),
             ),
             BoxShadow(
               color: const Color(0xFF00CFFF).withOpacity(0.30),
-              blurRadius: 60, spreadRadius: 8,
+              blurRadius: 60,
+              spreadRadius: 8,
             ),
           ],
         ),
         child: Center(
           child: saving
               ? const SizedBox(
-                  width: 22, height: 22,
+                  width: 22,
+                  height: 22,
                   child: CircularProgressIndicator(
-                    strokeWidth: 2.4, color: Colors.white,
+                    strokeWidth: 2.4,
+                    color: Colors.white,
                   ),
                 )
               : const Text(

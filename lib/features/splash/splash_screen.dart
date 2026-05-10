@@ -37,20 +37,20 @@ class _SplashScreenState extends State<SplashScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Dark blue radial gradient background
+          // Same background gradient as the voice instructions screen.
           const Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0.0, 0.0),
-                  radius: 1.0,
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
                   colors: [
-                    Color(0xFF1A3A8A),
-                    Color(0xFF0E2360),
-                    Color(0xFF071540),
                     Color(0xFF030A20),
+                    Color(0xFF071540),
+                    Color(0xFF0E2360),
+                    Color(0xFF1A3A8A),
                   ],
-                  stops: [0.0, 0.30, 0.65, 1.0],
+                  stops: [0.0, 0.50, 0.75, 1.0],
                 ),
               ),
             ),
@@ -59,7 +59,7 @@ class _SplashScreenState extends State<SplashScreen> {
           // Centered white circle (logo placeholder)
           Center(
             child: Container(
-              width:  MediaQuery.sizeOf(context).width * 0.40,
+              width: MediaQuery.sizeOf(context).width * 0.40,
               height: MediaQuery.sizeOf(context).width * 0.40,
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
