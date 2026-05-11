@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'dart:io' show Platform;
 
 import 'package:gp_hudai/core/constants/location_constants.dart';
+import 'package:gp_hudai/core/models/detection.dart';
 import 'package:gp_hudai/core/services/yolo_service.dart';
 import 'package:gp_hudai/core/services/frame_preprocessor.dart';
 import 'package:gp_hudai/core/services/detection_decoder.dart';
@@ -65,6 +66,11 @@ class CameraController extends ChangeNotifier {
 
   cam.CameraController? get cameraController => _cameraController;
   Future<void>? get initializeFuture => _initializeFuture;
+  ValueListenable<List<Detection>> get detectionsListenable =>
+      _detectionsNotifier;
+
+  final ValueNotifier<List<Detection>> _detectionsNotifier =
+      ValueNotifier<List<Detection>>(const []);
 
   bool _useMockCamera = false;
   String? _cameraError;
@@ -113,6 +119,7 @@ class CameraController extends ChangeNotifier {
 
     _yoloService.dispose();
     _audioService.dispose();
+    _detectionsNotifier.dispose();
     _cameraController?.dispose();
     super.dispose();
   }
@@ -266,6 +273,7 @@ class CameraController extends ChangeNotifier {
         currentDetections: detections,
         isInferring: false,
       );
+      _detectionsNotifier.value = List<Detection>.unmodifiable(detections);
 
       // Log occasionally so we know it's alive
       if (newCount % 3 == 0) {

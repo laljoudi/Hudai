@@ -4,7 +4,9 @@ import 'package:camera/camera.dart' show CameraPreview;
 import 'package:flutter/material.dart';
 
 import 'package:gp_hudai/app/app_routes.dart';
+import 'package:gp_hudai/core/models/detection.dart';
 import 'package:gp_hudai/features/camera/camera_controller.dart';
+import 'package:gp_hudai/widgets/detection_overlay.dart';
 
 /// Camera screen — UI only.
 ///
@@ -70,6 +72,9 @@ class _CameraScreenState extends State<CameraScreen> {
           // Layer 0 — Camera feed
           _buildCamera(),
 
+          // Layer 1 - Live detection boxes
+          Positioned.fill(child: _buildDetectionOverlay()),
+
           // Layer 1 — 4 invisible quadrant tap zones (entire screen)
           Positioned.fill(child: _buildQuadrants()),
 
@@ -85,6 +90,23 @@ class _CameraScreenState extends State<CameraScreen> {
           Align(alignment: Alignment.bottomCenter, child: _buildGlassyFooter()),
         ],
       ),
+    );
+  }
+
+  Widget _buildDetectionOverlay() {
+    final cam = _controller.cameraController;
+    if (cam == null || !cam.value.isInitialized) {
+      return const SizedBox.shrink();
+    }
+
+    return ValueListenableBuilder<List<Detection>>(
+      valueListenable: _controller.detectionsListenable,
+      builder: (context, detections, _) {
+        return DetectionOverlay(
+          detections: detections,
+          cameraAspectRatio: cam.value.aspectRatio,
+        );
+      },
     );
   }
 
