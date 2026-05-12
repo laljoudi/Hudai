@@ -25,7 +25,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   // Subtle ambient glow — view-only, no app state.
   late final AnimationController _glowCtrl;
-  late final Animation<double>   _glowAnim;
+  late final Animation<double> _glowAnim;
 
   @override
   void initState() {
@@ -39,9 +39,10 @@ class _SettingsScreenState extends State<SettingsScreen>
       vsync: this,
       duration: const Duration(milliseconds: 2400),
     )..repeat(reverse: true);
-    _glowAnim = Tween<double>(begin: 0.55, end: 1.0).animate(
-      CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut),
-    );
+    _glowAnim = Tween<double>(
+      begin: 0.55,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
   }
 
   @override
@@ -131,11 +132,10 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
           ),
 
-          // Back tap zone — small top-left corner. Sits above the main
-          // GestureDetector so taps here go back instead of opening edit.
+          // Back tap zone — small top-right corner (RTL layout).
           Positioned(
             top: 0,
-            left: 0,
+            right: 0,
             child: SafeArea(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -151,7 +151,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Background — same radial gradient as the rest of the app
+//  Background — same as the voice instructions screen
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Background extends StatelessWidget {
@@ -160,16 +160,16 @@ class _Background extends StatelessWidget {
   Widget build(BuildContext context) {
     return const DecoratedBox(
       decoration: BoxDecoration(
-        gradient: RadialGradient(
-          center: Alignment(0.0, 0.0),
-          radius: 1.0,
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
           colors: [
-            Color(0xFF1A3A8A),
-            Color(0xFF0E2360),
-            Color(0xFF071540),
             Color(0xFF030A20),
+            Color(0xFF071540),
+            Color(0xFF0E2360),
+            Color(0xFF1A3A8A),
           ],
-          stops: [0.0, 0.30, 0.65, 1.0],
+          stops: [0.0, 0.50, 0.75, 1.0],
         ),
       ),
     );
@@ -189,10 +189,10 @@ class _SettingsTile extends StatelessWidget {
     required this.onTap,
   });
 
-  final IconData     icon;
-  final String       title;
-  final String?      currentNumber;
-  final double       glow;
+  final IconData icon;
+  final String title;
+  final String? currentNumber;
+  final double glow;
   final VoidCallback onTap;
 
   @override
@@ -205,80 +205,83 @@ class _SettingsTile extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           onTap: onTap,
           child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 18, vertical: 18,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.08),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: Colors.white.withOpacity(0.20)),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF1855FF).withOpacity(0.20 + 0.15 * glow),
-                  blurRadius:   28,
+                  color: const Color(
+                    0xFF1855FF,
+                  ).withOpacity(0.20 + 0.15 * glow),
+                  blurRadius: 28,
                   spreadRadius: 1,
                 ),
                 BoxShadow(
                   color: const Color(0xFF00CFFF).withOpacity(0.12 * glow),
-                  blurRadius:   45,
+                  blurRadius: 45,
                   spreadRadius: 4,
                 ),
               ],
             ),
-            child: Row(
-              children: [
-                // Leading glassy icon chip
-                Container(
-                  width:  56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF40E0FF), Color(0xFF1855FF)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF1855FF).withOpacity(0.45),
-                        blurRadius:   20,
-                        spreadRadius: 1,
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: Row(
+                children: [
+                  // Leading glassy icon chip — on the right in RTL
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF40E0FF), Color(0xFF1855FF)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                    ],
-                  ),
-                  child: Icon(icon, color: Colors.white, size: 28),
-                ),
-
-                const SizedBox(width: 14),
-
-                // Title + current number (or "not set" hint)
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.2,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF1855FF).withOpacity(0.45),
+                          blurRadius: 20,
+                          spreadRadius: 1,
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      _CurrentNumberLine(number: currentNumber),
-                    ],
+                      ],
+                    ),
+                    child: Icon(icon, color: Colors.white, size: 28),
                   ),
-                ),
 
-                const SizedBox(width: 8),
+                  const SizedBox(width: 14),
 
-                Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  color: Colors.white.withOpacity(0.55),
-                  size: 16,
-                ),
-              ],
+                  // Title + current number (or "not set" hint)
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        _CurrentNumberLine(number: currentNumber),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(width: 8),
+
+                  Icon(
+                    Icons.arrow_back_ios_new,
+                    color: Colors.white.withOpacity(0.55),
+                    size: 16,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -302,10 +305,7 @@ class _CurrentNumberLine extends StatelessWidget {
       children: [
         Text(
           'الرقم الحالي:',
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.55),
-            fontSize: 13,
-          ),
+          style: TextStyle(color: Colors.white.withOpacity(0.55), fontSize: 13),
         ),
         const SizedBox(width: 6),
         Flexible(
@@ -342,13 +342,13 @@ class _BackBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 10, left: 10),
+      padding: const EdgeInsets.only(top: 10, right: 10),
       child: SizedBox(
         // Generous tap area for blind/low-vision users.
-        width:  110,
+        width: 110,
         height: 110,
         child: Align(
-          alignment: Alignment.topLeft,
+          alignment: Alignment.topRight,
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: ClipRRect(
@@ -356,18 +356,16 @@ class _BackBadge extends StatelessWidget {
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
                 child: Container(
-                  width:  64,
+                  width: 64,
                   height: 64,
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(22),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.20),
-                    ),
+                    border: Border.all(color: Colors.white.withOpacity(0.20)),
                     boxShadow: [
                       BoxShadow(
                         color: const Color(0xFF1855FF).withOpacity(0.25),
-                        blurRadius:   18,
+                        blurRadius: 18,
                         spreadRadius: 1,
                       ),
                     ],
@@ -386,4 +384,3 @@ class _BackBadge extends StatelessWidget {
     );
   }
 }
-
