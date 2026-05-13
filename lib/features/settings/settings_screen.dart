@@ -132,11 +132,10 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
           ),
 
-          // Back tap zone — small top-left corner. Sits above the main
-          // GestureDetector so taps here go back instead of opening edit.
+          // Back tap zone — small top-right corner (RTL layout).
           Positioned(
             top: 0,
-            left: 0,
+            right: 0,
             child: SafeArea(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -226,60 +225,63 @@ class _SettingsTile extends StatelessWidget {
                 ),
               ],
             ),
-            child: Row(
-              children: [
-                // Leading glassy icon chip
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF40E0FF), Color(0xFF1855FF)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF1855FF).withOpacity(0.45),
-                        blurRadius: 20,
-                        spreadRadius: 1,
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: Row(
+                children: [
+                  // Leading glassy icon chip — on the right in RTL
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF40E0FF), Color(0xFF1855FF)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                    ],
-                  ),
-                  child: Icon(icon, color: Colors.white, size: 28),
-                ),
-
-                const SizedBox(width: 14),
-
-                // Title + current number (or "not set" hint)
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.2,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF1855FF).withOpacity(0.45),
+                          blurRadius: 20,
+                          spreadRadius: 1,
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      _CurrentNumberLine(number: currentNumber),
-                    ],
+                      ],
+                    ),
+                    child: Icon(icon, color: Colors.white, size: 28),
                   ),
-                ),
 
-                const SizedBox(width: 8),
+                  const SizedBox(width: 14),
 
-                Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  color: Colors.white.withOpacity(0.55),
-                  size: 16,
-                ),
-              ],
+                  // Title + current number (or "not set" hint)
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        _CurrentNumberLine(number: currentNumber),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(width: 8),
+
+                  Icon(
+                    Icons.arrow_back_ios_new,
+                    color: Colors.white.withOpacity(0.55),
+                    size: 16,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -340,13 +342,13 @@ class _BackBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 10, left: 10),
+      padding: const EdgeInsets.only(top: 10, right: 10),
       child: SizedBox(
         // Generous tap area for blind/low-vision users.
         width: 110,
         height: 110,
         child: Align(
-          alignment: Alignment.topLeft,
+          alignment: Alignment.topRight,
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: ClipRRect(
