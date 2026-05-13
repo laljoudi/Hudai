@@ -18,6 +18,7 @@ class AppTheme {
         error: AppColors.danger,
       ),
       textTheme: base.textTheme.apply(
+        fontFamily: 'IBMPlexSansArabic',
         bodyColor: Colors.black,
         displayColor: Colors.black,
       ),
@@ -35,7 +36,8 @@ class AppTheme {
           shape: const StadiumBorder(),
         ),
       ),
-        bottomAppBarTheme: const BottomAppBarThemeData(
+        bottomAppBarTheme: const BottomAppBarTheme(
+        // bottomAppBarTheme: const BottomAppBarThemeData(
         //color: AppColors.footer,
       ),
     );
