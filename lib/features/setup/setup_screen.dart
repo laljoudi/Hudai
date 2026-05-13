@@ -115,8 +115,10 @@ class _SetupScreenState extends State<SetupScreen>
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white,
+                fontFamily: 'IBMPlexSansArabic',
+                fontWeight: FontWeight.w400,
                 fontSize: 32,
-                fontWeight: FontWeight.w700,
+                // fontWeight: FontWeight.w700,
                 letterSpacing: -0.5,
               ),
             ),
@@ -128,6 +130,8 @@ class _SetupScreenState extends State<SetupScreen>
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white.withOpacity(0.55),
+                fontFamily: 'IBMPlexSansArabic',
+                fontWeight: FontWeight.w300,
                 fontSize: 14,
                 height: 1.5,
               ),
