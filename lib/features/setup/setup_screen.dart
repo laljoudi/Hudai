@@ -123,9 +123,11 @@ class _SetupScreenState extends State<SetupScreen>
   }
 
   // ───────────────────────────────────────────────────────────────────
-  // Voice mode — audio-first. Only the page title and a single central
-  // visual (mic orb OR three-dot loader) are rendered. All instructions
-  // are delivered by the audio cues.
+  // Voice mode — audio-first. The only persistent visible elements are:
+  //   - the page title at the top
+  //   - one (and only one) mic button in the centre
+  //   - three animated dots BELOW the mic while the system is busy
+  // No status text, no instructions, no recognition chip — all spoken.
   // ───────────────────────────────────────────────────────────────────
   Widget _buildVoiceMode() {
     return GestureDetector(
@@ -154,7 +156,35 @@ class _SetupScreenState extends State<SetupScreen>
 
             const Spacer(),
 
-            _buildVoiceCenter(),
+            // The mic — always visible, never duplicated, never dimmed.
+            // (Intro stage uses the same rendering as idle so the screen
+            // looks "ready" the moment it opens, while the intro audio
+            // plays in the background.)
+            AnimatedBuilder(
+              animation: _pulse,
+              builder: (_, __) {
+                final t = _controller.isListening ? _pulse.value : 0.0;
+                return _MicOrb(
+                  pulse: t,
+                  listening: _controller.isListening,
+                );
+              },
+            ),
+
+            const SizedBox(height: 28),
+
+            // Loading indicator — small white dots, sits BELOW the mic.
+            // The reserved height keeps the mic from jumping when the
+            // indicator appears or disappears.
+            SizedBox(
+              height: 12,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                child: _isProcessingStage()
+                    ? const _ProcessingDots()
+                    : const SizedBox.shrink(),
+              ),
+            ),
 
             const Spacer(),
           ],
@@ -163,34 +193,15 @@ class _SetupScreenState extends State<SetupScreen>
     );
   }
 
-  /// The single central visual for voice mode.
-  ///
-  ///   - Busy stages (processing / invalid / confirming / saving): three
-  ///     animated dots, no text.
-  ///   - All other stages: the mic orb, with its pulse driven by the
-  ///     listening state.
-  Widget _buildVoiceCenter() {
+  /// True while the controller is doing work the user must wait for:
+  /// parsing speech, validating digits, reading the number back, or
+  /// persisting. The dots animation is gated on this.
+  bool _isProcessingStage() {
     final stage = _controller.stage;
-    final isBusy = stage == SetupStage.processing ||
+    return stage == SetupStage.processing ||
         stage == SetupStage.invalid ||
         stage == SetupStage.confirming ||
         stage == SetupStage.saving;
-
-    if (isBusy) {
-      return const _ProcessingDots();
-    }
-
-    return AnimatedBuilder(
-      animation: _pulse,
-      builder: (_, __) {
-        final t = _controller.isListening ? _pulse.value : 0.0;
-        return _MicOrb(
-          pulse: t,
-          listening: _controller.isListening,
-          dim: stage == SetupStage.intro,
-        );
-      },
-    );
   }
 
   // ───────────────────────────────────────────────────────────────────
@@ -279,71 +290,50 @@ class _Background extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Mic orb — pulses while listening, dimmed during intro
+//  Mic orb — a SINGLE circular button. The listening "pulse" is rendered as
+//  an animated outer glow (boxShadow), not as a second concentric circle, so
+//  the user always sees exactly one button on screen.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _MicOrb extends StatelessWidget {
   const _MicOrb({
     required this.pulse,
     required this.listening,
-    required this.dim,
   });
 
-  final double pulse;
-  final bool listening;
-  final bool dim;
+  final double pulse;   // 0.0 (resting) ─→ 1.0 (peak of listening pulse)
+  final bool   listening;
 
   @override
   Widget build(BuildContext context) {
-    final glow = 0.35 + pulse * 0.45;
-    final scale = 1.0 + pulse * 0.10;
-    return Opacity(
-      opacity: dim ? 0.4 : 1.0,
-      child: SizedBox(
-        width: 220,
-        height: 220,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            if (listening)
-              Container(
-                width: 220 * scale,
-                height: 220 * scale,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(
-                    0xFF40E0FF,
-                  ).withOpacity(0.10 + pulse * 0.10),
-                ),
-              ),
-            Container(
-              width: 160,
-              height: 160,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF40E0FF), Color(0xFF1855FF)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF1855FF).withOpacity(glow),
-                    blurRadius: 40,
-                    spreadRadius: 4,
-                  ),
-                  BoxShadow(
-                    color: const Color(0xFF00CFFF).withOpacity(glow * 0.5),
-                    blurRadius: 70,
-                    spreadRadius: 12,
-                  ),
-                ],
-              ),
-              child: const Icon(Icons.mic, color: Colors.white, size: 64),
-            ),
-          ],
+    // Base glow when idle, intensified while listening.
+    final base = listening ? 0.45 : 0.30;
+    final glow = base + pulse * 0.45;
+
+    return Container(
+      width: 160,
+      height: 160,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          colors: [Color(0xFF40E0FF), Color(0xFF1855FF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1855FF).withOpacity(glow),
+            blurRadius: 40 + pulse * 18,
+            spreadRadius: 4 + pulse * 6,
+          ),
+          BoxShadow(
+            color: const Color(0xFF00CFFF).withOpacity(glow * 0.5),
+            blurRadius: 70 + pulse * 24,
+            spreadRadius: 12 + pulse * 8,
+          ),
+        ],
       ),
+      child: const Icon(Icons.mic, color: Colors.white, size: 64),
     );
   }
 }
@@ -390,26 +380,17 @@ class _ProcessingDotsState extends State<_ProcessingDots>
           children: List.generate(3, (i) {
             final on = i <= step;
             return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 9),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOut,
-                width: 18,
-                height: 18,
+                width: 8,
+                height: 8,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: on
-                      ? const Color(0xFF40E0FF)
-                      : Colors.white.withOpacity(0.15),
-                  boxShadow: on
-                      ? [
-                          BoxShadow(
-                            color: const Color(0xFF40E0FF).withOpacity(0.55),
-                            blurRadius: 14,
-                            spreadRadius: 1,
-                          ),
-                        ]
-                      : null,
+                      ? Colors.white
+                      : Colors.white.withOpacity(0.20),
                 ),
               ),
             );
