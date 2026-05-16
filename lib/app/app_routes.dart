@@ -1,4 +1,4 @@
-mport 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:gp_hudai/features/splash/splash_screen.dart';
 import 'package:gp_hudai/features/onboarding/voice_instructions_screen.dart';
 import 'package:gp_hudai/features/setup/setup_screen.dart';
