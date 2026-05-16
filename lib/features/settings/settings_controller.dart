@@ -2,498 +2,162 @@ import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
-import 'package:permission_handler/permission_handler.dart' as ph;
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import 'package:gp_hudai/core/storage/prefs.dart';
 
-/// Audio assets.
+/// Brain of the Settings screen.
 ///
-/// The screen-intro sequence (three clips played back-to-back with a
-/// short gap) is Settings-specific. Everything else is shared with the
-/// first-launch Setup flow (same physical MP3 files under
-/// `assets/audio/setup/`).
-class _Audio {
-  // ── Settings-specific screen intro (played on screen open) ─────────
-  static const String settingsIntro       = 'audio/settings/settings_page_intro.mp3';
-  static const String backNavigationHint  = 'audio/settings/back_navigation_instruction.mp3';
-  static const String openEmergencyEdit   = 'audio/settings/open_emergency_edit.mp3';
-
-  /// Sequence played one after another with [introGap] between clips.
-  static const List<String> introSequence = [
-    settingsIntro,
-    backNavigationHint,
-    openEmergencyEdit,
-  ];
-
-  static const Duration introGap = Duration(milliseconds: 1500);
-
-  // ── Shared voice-flow assets (same files as the Setup flow) ────────
-  static const String startListening = 'audio/setup/start_listening.mp3';
-  static const String confirmNumber  = 'audio/setup/confirm_number.mp3';
-  static const String processing     = 'audio/setup/processing_number.mp3';
-  static const String invalidVoice   = 'audio/setup/invalid_voice_input.mp3';
-  static const String manualIntro    = 'audio/setup/manual_input_intro.mp3';
-  static const String tapToSave      = 'audio/setup/tap_to_save.mp3';
-
-  static const List<String> digits = [
-    'audio/setup/0.mp3',
-    'audio/setup/1.mp3',
-    'audio/setup/2.mp3',
-    'audio/setup/3.mp3',
-    'audio/setup/4.mp3',
-    'audio/setup/5.mp3',
-    'audio/setup/6.mp3',
-    'audio/setup/7.mp3',
-    'audio/setup/8.mp3',
-    'audio/setup/9.mp3',
-  ];
-
-  static String digit(int d) => digits[d];
-}
-
-/// Stages — identical semantics to SetupStage, kept separate so the two
-/// controllers never share an enum value.
-enum SettingsStage {
-  intro,
-  idle,
-  startingListen,
-  listening,
-  processing,
-  invalid,
-  confirming,
-  awaitingSave,
-  saving,
-  manual,
-}
-
-/// Brain of the Settings (Edit-emergency-number) screen.
+/// Owns the audio player and the intro-sequence state. The view only
+/// renders and forwards taps; it has no audio logic of its own.
 ///
-/// Deliberate clone of `SetupController`'s working voice-flow logic, kept
-/// in this file (not a new file, per user preference). Owns its own
-/// AudioPlayer + STT session so there is zero shared mutable state with
-/// the first-launch Setup flow.
+/// Audio sequence on screen open (played sequentially, gapped):
+///   1. settings_page_intro.mp3
+///   2. (~1.5s gap)
+///   3. back_navigation_instruction.mp3
+///   4. (~1.5s gap)
+///   5. open_emergency_edit.mp3
+///
+/// Any tap on the screen calls [stopAudio] before navigating, so the user
+/// is never spoken over. When the user taps to open the dedicated
+/// emergency-edit screen, [releaseAudio] is used instead so the player
+/// is fully freed before that screen's own player starts.
 class SettingsController extends ChangeNotifier {
-  final AudioPlayer      _audioPlayer = AudioPlayer();
-  final stt.SpeechToText _speech      = stt.SpeechToText();
+  /// Audio paths used by the screen.
+  /// audioplayers paths are RELATIVE to `assets/`, no leading prefix.
+  static const List<String> _introSequence = [
+    'audio/settings/settings_page_intro.mp3',
+    'audio/settings/back_navigation_instruction.mp3',
+    'audio/settings/open_emergency_edit.mp3',
+  ];
 
-  bool   _speechAvailable    = false;
-  bool   _disposed           = false;
-  bool   _processed          = false;
-  bool   _userStopRequested  = false;
-  int    _restartFailures    = 0;
-  String _accumulatedText    = '';
+  /// Gap between clips. Within the spec's 2–3s upper bound, but short
+  /// enough to feel responsive.
+  static const Duration _gapBetweenClips = Duration(milliseconds: 1500);
 
-  SettingsStage _stage              = SettingsStage.intro;
-  String        _recognizedNumber   = '';
-  String        _heardText          = '';
-  String        _lastParsedDigits   = '';
-  bool          _shouldNavigate     = false;
-  String?       _currentNumber;
+  /// Hard upper bound on a single clip's playback. Set high so a slightly
+  /// long clip never gets cut off mid-sentence — this is a safety net
+  /// against a missing `onPlayerComplete`, NOT a normal pace control.
+  static const Duration _clipTimeout = Duration(seconds: 60);
 
-  SettingsStage get stage             => _stage;
-  String        get recognizedNumber  => _recognizedNumber;
-  String        get heardText         => _heardText;
-  String        get lastParsedDigits  => _lastParsedDigits;
-  bool          get shouldNavigate    => _shouldNavigate;
-  String?       get currentNumber     => _currentNumber;
+  final AudioPlayer _player = AudioPlayer();
 
-  bool get isManual    => _stage == SettingsStage.manual;
-  bool get isListening => _stage == SettingsStage.listening;
-  bool get inputLocked =>
-      _stage == SettingsStage.intro || _stage == SettingsStage.saving;
+  bool    _disposed      = false;
+  bool    _stopped       = false;
+  bool    _audioReleased = false;
+  String? _currentNumber;
+
+  /// The emergency number currently saved in Prefs, or null if none yet.
+  String? get currentNumber => _currentNumber;
 
   // ──────────────────────────────────────────────────────────────────
   // Lifecycle
   // ──────────────────────────────────────────────────────────────────
 
-  /// Plays the intro audio, then requests mic+speech permissions, then
-  /// unlocks the screen to `idle`. Also reads the currently-saved number
-  /// from Prefs (used only for diagnostics; the UI no longer displays it).
   Future<void> initialize() async {
     debugPrint('SettingsController: initialize()');
 
+    // Match the player config used by the rest of the app.
     try {
-      await _audioPlayer.setReleaseMode(ReleaseMode.stop);
-      await _audioPlayer.setVolume(1.0);
+      await _player.setReleaseMode(ReleaseMode.stop);
+      await _player.setPlayerMode(PlayerMode.mediaPlayer);
+      await _player.setVolume(1.0);
     } catch (e) {
       debugPrint('🔊 settings player config error: $e');
     }
 
-    // Fire-and-forget; not awaited so audio starts immediately.
+    // Fire-and-forget: don't block the audio sequence on prefs I/O.
     // ignore: unawaited_futures
-    _loadCurrentNumber();
+    refreshCurrentNumber();
 
-    _setStage(SettingsStage.intro);
+    // Play the three clips one after another, with a small gap.
     await _runIntroSequence();
-    if (_disposed) return;
-
-    await _ensureVoicePermissions();
-    if (_disposed) return;
-
-    _setStage(SettingsStage.idle);
-  }
-
-  /// Plays the three Settings-specific intro clips back-to-back with a
-  /// short gap between them. Bails out cleanly if the controller is
-  /// disposed or if the stage was forced out of `intro` (e.g. user
-  /// double-tapped into manual mode while the intro was still playing).
-  Future<void> _runIntroSequence() async {
-    for (var i = 0; i < _Audio.introSequence.length; i++) {
-      if (_disposed || _stage != SettingsStage.intro) return;
-      await _playAndWait(_Audio.introSequence[i]);
-      if (_disposed || _stage != SettingsStage.intro) return;
-      // No gap after the last clip.
-      if (i < _Audio.introSequence.length - 1) {
-        await Future.delayed(_Audio.introGap);
-      }
-    }
   }
 
   @override
   void dispose() {
     debugPrint('SettingsController: dispose()');
     _disposed = true;
-    try { _speech.cancel(); } catch (_) {}
-    try { _audioPlayer.dispose(); } catch (_) {}
+    _stopped  = true;
+    // releaseAudio() may have already disposed the player.
+    if (!_audioReleased) {
+      _audioReleased = true;
+      try { _player.dispose(); } catch (_) {}
+    }
     super.dispose();
   }
 
-  void clearNavigationFlag() => _shouldNavigate = false;
+  // ──────────────────────────────────────────────────────────────────
+  // Public API
+  // ──────────────────────────────────────────────────────────────────
 
-  Future<void> _loadCurrentNumber() async {
+  /// Stop any audio that may still be playing and prevent the sequence
+  /// loop from advancing to the next clip. Safe to call after
+  /// [releaseAudio] — becomes a no-op.
+  Future<void> stopAudio() async {
+    _stopped = true;
+    if (_audioReleased) return;
+    try { await _player.stop(); } catch (_) {}
+  }
+
+  /// Stop AND fully dispose the AudioPlayer. Call this before pushing
+  /// the dedicated emergency-edit screen on top of Settings, so that
+  /// screen's audio sequence does not have to compete with Settings'
+  /// (now idle) player for the Android audio focus.
+  ///
+  /// Safe to call multiple times. After release, [stopAudio] and the
+  /// destructor become no-ops on the player.
+  Future<void> releaseAudio() async {
+    if (_audioReleased) return;
+    _audioReleased = true;
+    _stopped = true;
+    try { await _player.stop(); } catch (_) {}
+    try { await _player.dispose(); } catch (_) {}
+    debugPrint('SettingsController: 🔇 audio released');
+  }
+
+  /// Re-read the saved emergency number from storage. Call this on
+  /// screen init and again whenever returning from the edit screen, so
+  /// the UI reflects any change the user just made.
+  Future<void> refreshCurrentNumber() async {
     try {
       _currentNumber = await Prefs.getEmergencyNumber();
       if (_disposed) return;
       notifyListeners();
     } catch (e) {
-      debugPrint('🚨 settings load current number: $e');
+      debugPrint('🚨 settings refreshCurrentNumber: $e');
     }
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // Public taps
+  // Sequence
   // ──────────────────────────────────────────────────────────────────
 
-  Future<void> onSingleTap() async {
-    if (inputLocked) return;
-    if (_stage == SettingsStage.manual) return;
-    debugPrint('👆 settings onSingleTap (stage=$_stage)');
-
-    if (_stage == SettingsStage.listening) {
-      debugPrint('🛑 settings user requested stop');
-      _userStopRequested = true;
-      try { await _speech.stop(); } catch (_) {}
-      return;
-    }
-
-    if (_stage == SettingsStage.awaitingSave) {
-      debugPrint('🔄 settings awaitingSave → retry voice');
-      await _cancelEverything();
-      await _runVoiceFlow();
-      return;
-    }
-
-    await _cancelEverything();
-    await _runVoiceFlow();
-  }
-
-  Future<void> onLongPress() async {
-    if (_stage != SettingsStage.awaitingSave) {
-      debugPrint('👆⏱ settings onLongPress ignored (stage=$_stage)');
-      return;
-    }
-    debugPrint('💾 settings awaitingSave → save + navigate (long press)');
-    await _saveAndNavigate(_recognizedNumber);
-  }
-
-  Future<void> onDoubleTap() async {
-    if (_stage == SettingsStage.intro) return;
-    debugPrint('👆👆 settings onDoubleTap → manual (stage=$_stage)');
-
-    await _cancelEverything();
-    _setStage(SettingsStage.manual);
-    await _playAndWait(_Audio.manualIntro);
-  }
-
-  // ──────────────────────────────────────────────────────────────────
-  // Voice flow
-  // ──────────────────────────────────────────────────────────────────
-
-  Future<bool> _ensureVoicePermissions() async {
-    var mic    = await ph.Permission.microphone.status;
-    var speech = await ph.Permission.speech.status;
-
-    if (mic.isDenied)    mic    = await ph.Permission.microphone.request();
-    if (speech.isDenied) speech = await ph.Permission.speech.request();
-
-    final granted = mic.isGranted && speech.isGranted;
-    if (!granted) {
-      debugPrint('🎙️ settings permission denied: mic=$mic speech=$speech');
-    }
-    return granted;
-  }
-
-  Future<void> _runVoiceFlow() async {
-    _setStage(SettingsStage.startingListen);
-    await _playAndWait(_Audio.startListening);
-    if (_disposed || _stage != SettingsStage.startingListen) return;
-
-    final granted = await _ensureVoicePermissions();
-    if (!granted) {
-      _setStage(SettingsStage.idle);
-      return;
-    }
-
-    if (!_speechAvailable) {
-      _speechAvailable = await _speech.initialize(
-        onStatus: _onSpeechStatus,
-        onError:  _onSpeechError,
-      );
-    }
-    if (!_speechAvailable) {
-      debugPrint('🎙️ settings STT unavailable');
-      await _handleInvalid();
-      return;
-    }
-
-    _setStage(SettingsStage.listening);
-    _recognizedNumber  = '';
-    _heardText         = '';
-    _accumulatedText   = '';
-    _processed         = false;
-    _userStopRequested = false;
-    _restartFailures   = 0;
-
-    await _speech.listen(
-      localeId: 'ar_SA',
-      listenOptions: stt.SpeechListenOptions(
-        listenMode: stt.ListenMode.dictation,
-        partialResults: true,
-        cancelOnError: false,
-      ),
-      pauseFor:  const Duration(minutes: 10),
-      listenFor: const Duration(minutes: 5),
-      onResult:  _onSpeechResult,
-    );
-  }
-
-  void _onSpeechStatus(String status) {
-    debugPrint('🎙️ settings STT status: $status');
-    if ((status == 'notListening' || status == 'done') &&
-        _stage == SettingsStage.listening &&
-        !_processed) {
-      if (_userStopRequested) {
-        _process(_accumulatedText);
-      } else {
-        _restartListening();
+  Future<void> _runIntroSequence() async {
+    for (var i = 0; i < _introSequence.length; i++) {
+      if (_disposed || _stopped) return;
+      await _playAndWait(_introSequence[i]);
+      if (_disposed || _stopped) return;
+      // Small breathing room between clips, but only between — not after
+      // the last one.
+      if (i < _introSequence.length - 1) {
+        await Future.delayed(_gapBetweenClips);
       }
     }
   }
 
-  void _onSpeechError(dynamic error) {
-    debugPrint('🎙️ settings STT error: $error');
-    if (_stage != SettingsStage.listening || _processed) return;
-    if (_userStopRequested) {
-      _processed = true;
-      _handleInvalid();
-      return;
-    }
-    _restartFailures++;
-    if (_restartFailures >= 4) {
-      _processed = true;
-      _handleInvalid();
-      return;
-    }
-    _restartListening();
-  }
-
-  void _onSpeechResult(dynamic result) {
-    final words   = (result.recognizedWords as String?) ?? '';
-    final isFinal = (result.finalResult as bool?) ?? false;
-    debugPrint('🎙️ settings heard: "$words" final=$isFinal');
-
-    final live = ('$_accumulatedText $words').trim();
-    _heardText = live;
-    if (isFinal && words.isNotEmpty) {
-      _accumulatedText = live;
-    }
-    notifyListeners();
-  }
-
-  Future<void> _restartListening() async {
-    if (_disposed) return;
-    if (_stage != SettingsStage.listening) return;
-    if (_processed) return;
-    if (_userStopRequested) return;
-
-    debugPrint('🔄 settings restart listen (failures=$_restartFailures)');
-    await Future.delayed(const Duration(milliseconds: 250));
-    if (_disposed ||
-        _userStopRequested ||
-        _stage != SettingsStage.listening ||
-        _processed) {
-      return;
-    }
-
-    try {
-      await _speech.listen(
-        localeId: 'ar_SA',
-        listenOptions: stt.SpeechListenOptions(
-          listenMode: stt.ListenMode.dictation,
-          partialResults: true,
-          cancelOnError: false,
-        ),
-        pauseFor:  const Duration(minutes: 10),
-        listenFor: const Duration(minutes: 5),
-        onResult:  _onSpeechResult,
-      );
-    } catch (e) {
-      debugPrint('🔄 settings restart failed: $e');
-      _restartFailures++;
-      if (_restartFailures < 4) {
-        _restartListening();
-      } else {
-        _processed = true;
-        _handleInvalid();
-      }
-    }
-  }
-
-  Future<void> _process(String words) async {
-    if (_processed) return;
-    _processed = true;
-    if (_stage != SettingsStage.listening) return;
-
-    _setStage(SettingsStage.processing);
-    final digits = _arabicSpeechToDigits(words);
-    _lastParsedDigits = digits;
-    debugPrint('🎙️ settings parsed: "$digits" (len=${digits.length})');
-
-    await _playAndWait(_Audio.processing);
-    if (_disposed || _stage != SettingsStage.processing) return;
-
-    if (!_isValidNumber(digits)) {
-      await _handleInvalid();
-      return;
-    }
-
-    _recognizedNumber = digits;
-    _setStage(SettingsStage.confirming);
-
-    await _playAndWait(_Audio.confirmNumber);
-    if (_disposed || _stage != SettingsStage.confirming) return;
-
-    for (final ch in digits.split('')) {
-      final d = int.tryParse(ch);
-      if (d == null) continue;
-      await _playAndWait(_Audio.digit(d));
-      if (_disposed || _stage != SettingsStage.confirming) return;
-    }
-
-    await _playAndWait(_Audio.tapToSave);
-    if (_disposed || _stage != SettingsStage.confirming) return;
-
-    _setStage(SettingsStage.awaitingSave);
-  }
-
-  Future<void> _saveAndNavigate(String digits) async {
-    if (_stage == SettingsStage.saving) return;
-    if (!_isValidNumber(digits)) {
-      debugPrint('🚨 settings _saveAndNavigate: invalid number "$digits"');
-      await _handleInvalid();
-      return;
-    }
-    _setStage(SettingsStage.saving);
-    try {
-      debugPrint('💾 settings Prefs.saveEmergencyNumber("$digits") …');
-      await Prefs.saveEmergencyNumber(digits);
-      debugPrint('💾 settings   → saved OK');
-      if (_disposed) {
-        debugPrint('💾 settings   → controller disposed mid-save');
-        return;
-      }
-      _shouldNavigate = true;
-      debugPrint('💾 settings   → _shouldNavigate=true, notifying listeners');
-      notifyListeners();
-    } catch (e) {
-      debugPrint('🚨 settings save failed: $e');
-      _setStage(SettingsStage.awaitingSave);
-    }
-  }
-
-  // ──────────────────────────────────────────────────────────────────
-  // Manual mode (silent)
-  // ──────────────────────────────────────────────────────────────────
-
-  String? validateManualNumber(String? value) {
-    final input = (value ?? '').trim();
-    if (input.isEmpty) return 'الرجاء إدخال رقم الطوارئ';
-    final digits = input.replaceAll(RegExp(r'[^\d]'), '');
-    if (!_isValidNumber(digits)) {
-      return 'يجب أن يبدأ الرقم بـ 05 ويتكون من 10 أرقام';
-    }
-    return null;
-  }
-
-  Future<bool> saveManualNumber(String rawNumber) async {
-    if (_stage == SettingsStage.saving) return false;
-    final digits = rawNumber.replaceAll(RegExp(r'[^\d]'), '');
-    if (!_isValidNumber(digits)) return false;
-    _setStage(SettingsStage.saving);
-    try {
-      await Prefs.saveEmergencyNumber(digits);
-      return true;
-    } catch (e) {
-      debugPrint('🚨 settings manual save failed: $e');
-      _setStage(SettingsStage.manual);
-      return false;
-    }
-  }
-
-  // ──────────────────────────────────────────────────────────────────
-  // Helpers
-  // ──────────────────────────────────────────────────────────────────
-
-  bool _isValidNumber(String digits) => RegExp(r'^05\d{8}$').hasMatch(digits);
-
-  Future<void> _handleInvalid() async {
-    if (_disposed) return;
-    _setStage(SettingsStage.invalid);
-    await _playAndWait(_Audio.invalidVoice);
-    if (_disposed) return;
-    _setStage(SettingsStage.idle);
-  }
-
-  Future<void> _cancelEverything() async {
-    _processed         = true;
-    _userStopRequested = true;
-    _heardText         = '';
-    _accumulatedText   = '';
-    _restartFailures   = 0;
-    try { await _audioPlayer.stop(); } catch (_) {}
-    if (_speech.isListening) {
-      try { await _speech.cancel(); } catch (_) {}
-    }
-  }
-
-  void _setStage(SettingsStage s) {
-    if (_disposed) return;
-    _stage = s;
-    notifyListeners();
-  }
-
+  /// Play a single asset and wait until `onPlayerComplete` fires (or
+  /// until [_clipTimeout] elapses as a safety net).
   Future<void> _playAndWait(String path) async {
+    if (_audioReleased) return;
     debugPrint('🔊 settings play: $path');
     final completer = Completer<void>();
-    final sub = _audioPlayer.onPlayerComplete.listen((_) {
+    final sub = _player.onPlayerComplete.listen((_) {
       if (!completer.isCompleted) completer.complete();
     });
     try {
-      await _audioPlayer.stop();
-      await _audioPlayer.play(AssetSource(path));
+      await _player.play(AssetSource(path));
       await completer.future.timeout(
-        const Duration(seconds: 30),
+        _clipTimeout,
         onTimeout: () => debugPrint('🔊 settings audio timeout: $path'),
       );
     } catch (e) {
@@ -502,67 +166,4 @@ class SettingsController extends ChangeNotifier {
       await sub.cancel();
     }
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Arabic speech → digits (0-9)
-// ─────────────────────────────────────────────────────────────────────────────
-
-String _arabicSpeechToDigits(String text) {
-  if (text.isEmpty) return '';
-
-  const eastern = '٠١٢٣٤٥٦٧٨٩';
-  const arabicWordToDigit = <String, String>{
-    'صفر': '0', 'سفر': '0', 'صفرا': '0', 'صفرة': '0',
-    'واحد': '1', 'وحد': '1', 'وحدة': '1', 'واحدة': '1',
-    'اثنان': '2', 'اثنين': '2', 'إثنان': '2', 'إثنين': '2',
-    'تنين': '2', 'اتنين': '2', 'إتنين': '2', 'ثنين': '2',
-    'ثلاثة': '3', 'ثلاث': '3', 'تلاتة': '3', 'تلاثة': '3', 'ثلاثه': '3',
-    'أربعة': '4', 'اربعة': '4', 'أربع': '4', 'اربع': '4', 'اربعه': '4',
-    'خمسة': '5', 'خمس': '5', 'خمسه': '5',
-    'ستة': '6', 'ست': '6', 'سته': '6', 'ستا': '6',
-    'سبعة': '7', 'سبع': '7', 'سبعه': '7',
-    'ثمانية': '8', 'ثماني': '8', 'تمانية': '8', 'تماني': '8', 'ثمانيه': '8',
-    'تسعة': '9', 'تسع': '9', 'تسعه': '9',
-  };
-
-  final buf  = StringBuffer();
-  final arab = RegExp(r'[؀-ۿ]');
-  int i = 0;
-  while (i < text.length) {
-    final ch = text[i];
-
-    if (RegExp(r'[0-9]').hasMatch(ch)) { buf.write(ch); i++; continue; }
-
-    final ei = eastern.indexOf(ch);
-    if (ei >= 0) { buf.write(ei); i++; continue; }
-
-    if (arab.hasMatch(ch)) {
-      var j = i;
-      while (j < text.length && arab.hasMatch(text[j])) { j++; }
-      final word   = text.substring(i, j);
-      final mapped = arabicWordToDigit[word];
-      if (mapped != null) buf.write(mapped);
-      i = j;
-      continue;
-    }
-
-    i++;
-  }
-
-  return _normalizeSaudiNumber(buf.toString());
-}
-
-String _normalizeSaudiNumber(String d) {
-  if (d.startsWith('00966')) {
-    d = '0${d.substring(5)}';
-  } else if (d.startsWith('966')) {
-    d = '0${d.substring(3)}';
-  }
-  if (d.length == 9 && d.startsWith('5')) d = '0$d';
-  if (d.length != 10) {
-    final m = RegExp(r'05\d{8}').firstMatch(d);
-    if (m != null) return m.group(0)!;
-  }
-  return d;
 }
