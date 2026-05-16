@@ -16,9 +16,6 @@ class _SetupAudio {
   static const String processing = 'audio/setup/processing_number.mp3';
   static const String invalidVoice = 'audio/setup/invalid_voice_input.mp3';
   static const String manualIntro = 'audio/setup/manual_input_intro.mp3';
-  // Final cue after the digits are read back. Voiced as:
-  //   "اضغط مطولًا للحفظ، أو اضغط مرة واحدة لإعادة المحاولة"
-  // File name kept as tap_to_save.mp3 for now; will be renamed later.
   static const String tapToSave = 'audio/setup/tap_to_save.mp3';
 
   // Digit files 0–9, played one-by-one when reading back the number.
@@ -427,9 +424,15 @@ class SetupController extends ChangeNotifier {
     }
     _setStage(SetupStage.saving);
     try {
+      debugPrint('💾 Prefs.saveEmergencyNumber("$digits") …');
       await Prefs.saveEmergencyNumber(digits);
-      if (_disposed) return;
+      debugPrint('💾   → saved OK');
+      if (_disposed) {
+        debugPrint('💾   → controller disposed mid-save, no notify');
+        return;
+      }
       _shouldNavigate = true;
+      debugPrint('💾   → _shouldNavigate=true, notifying listeners');
       notifyListeners();
     } catch (e) {
       debugPrint('🚨 save failed: $e');
@@ -629,3 +632,4 @@ String _normalizeSaudiNumber(String d) {
 
   return d;
 }
+
