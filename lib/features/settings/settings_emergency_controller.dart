@@ -1,0 +1,515 @@
+import 'dart:async';
+
+import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+
+import 'package:gp_hudai/core/storage/prefs.dart';
+
+/// Audio assets — same physical MP3 files as the first-launch Setup flow.
+class _Audio {
+  static const String intro          = 'audio/setup/setup_intro.mp3';
+  static const String startListening = 'audio/setup/start_listening.mp3';
+  static const String confirmNumber  = 'audio/setup/confirm_number.mp3';
+  static const String processing     = 'audio/setup/processing_number.mp3';
+  static const String invalidVoice   = 'audio/setup/invalid_voice_input.mp3';
+  static const String manualIntro    = 'audio/setup/manual_input_intro.mp3';
+  static const String tapToSave      = 'audio/setup/tap_to_save.mp3';
+
+  static const List<String> digits = [
+    'audio/setup/0.mp3',
+    'audio/setup/1.mp3',
+    'audio/setup/2.mp3',
+    'audio/setup/3.mp3',
+    'audio/setup/4.mp3',
+    'audio/setup/5.mp3',
+    'audio/setup/6.mp3',
+    'audio/setup/7.mp3',
+    'audio/setup/8.mp3',
+    'audio/setup/9.mp3',
+  ];
+
+  static String digit(int d) => digits[d];
+}
+
+/// Stages — identical semantics to SetupStage, kept separate so the two
+/// controllers never share an enum value.
+enum SettingsEmergencyStage {
+  intro,
+  idle,
+  startingListen,
+  listening,
+  processing,
+  invalid,
+  confirming,
+  awaitingSave,
+  saving,
+  manual,
+}
+
+/// Brain of the Settings → Edit-emergency-number screen.
+///
+/// Dedicated, standalone clone of SetupController's working voice-flow
+/// logic. Owns its own AudioPlayer + STT session so there is zero shared
+/// mutable state with the first-launch Setup flow.
+class SettingsEmergencyController extends ChangeNotifier {
+  final AudioPlayer      _audioPlayer = AudioPlayer();
+  final stt.SpeechToText _speech      = stt.SpeechToText();
+
+  bool   _speechAvailable    = false;
+  bool   _disposed           = false;
+  bool   _processed          = false;
+  bool   _userStopRequested  = false;
+  int    _restartFailures    = 0;
+  String _accumulatedText    = '';
+
+  SettingsEmergencyStage _stage = SettingsEmergencyStage.intro;
+  String _recognizedNumber  = '';
+  String _heardText         = '';
+  String _lastParsedDigits  = '';
+  bool   _shouldNavigate    = false;
+
+  SettingsEmergencyStage get stage => _stage;
+  String get recognizedNumber       => _recognizedNumber;
+  String get heardText              => _heardText;
+  String get lastParsedDigits       => _lastParsedDigits;
+  bool   get shouldNavigate         => _shouldNavigate;
+
+  bool get isManual    => _stage == SettingsEmergencyStage.manual;
+  bool get isListening => _stage == SettingsEmergencyStage.listening;
+  bool get inputLocked =>
+      _stage == SettingsEmergencyStage.intro ||
+      _stage == SettingsEmergencyStage.saving;
+
+  // ──────────────────────────────────────────────────────────────────
+  // Lifecycle
+  // ──────────────────────────────────────────────────────────────────
+
+  Future<void> initialize() async {
+    debugPrint('SettingsEmergencyController: initialize()');
+
+    try {
+      await _audioPlayer.setReleaseMode(ReleaseMode.stop);
+      await _audioPlayer.setVolume(1.0);
+    } catch (e) {
+      debugPrint('🔊 SE player config error: $e');
+    }
+
+    _setStage(SettingsEmergencyStage.intro);
+    await _playAndWait(_Audio.intro);
+    if (_disposed) return;
+
+    await _ensureVoicePermissions();
+    if (_disposed) return;
+
+    _setStage(SettingsEmergencyStage.idle);
+  }
+
+  @override
+  void dispose() {
+    debugPrint('SettingsEmergencyController: dispose()');
+    _disposed = true;
+    try { _speech.cancel(); } catch (_) {}
+    try { _audioPlayer.dispose(); } catch (_) {}
+    super.dispose();
+  }
+
+  void clearNavigationFlag() => _shouldNavigate = false;
+
+  // ──────────────────────────────────────────────────────────────────
+  // Public taps
+  // ──────────────────────────────────────────────────────────────────
+
+  Future<void> onSingleTap() async {
+    if (inputLocked) return;
+    if (_stage == SettingsEmergencyStage.manual) return;
+    debugPrint('👆 SE onSingleTap (stage=$_stage)');
+
+    if (_stage == SettingsEmergencyStage.listening) {
+      debugPrint('🛑 SE user requested stop');
+      _userStopRequested = true;
+      try { await _speech.stop(); } catch (_) {}
+      return;
+    }
+
+    if (_stage == SettingsEmergencyStage.awaitingSave) {
+      debugPrint('🔄 SE awaitingSave → retry voice');
+      await _cancelEverything();
+      await _runVoiceFlow();
+      return;
+    }
+
+    await _cancelEverything();
+    await _runVoiceFlow();
+  }
+
+  Future<void> onLongPress() async {
+    if (_stage != SettingsEmergencyStage.awaitingSave) {
+      debugPrint('👆⏱ SE onLongPress ignored (stage=$_stage)');
+      return;
+    }
+    debugPrint('💾 SE awaitingSave → save + navigate (long press)');
+    await _saveAndNavigate(_recognizedNumber);
+  }
+
+  Future<void> onDoubleTap() async {
+    if (_stage == SettingsEmergencyStage.intro) return;
+    debugPrint('👆👆 SE onDoubleTap → manual (stage=$_stage)');
+
+    await _cancelEverything();
+    _setStage(SettingsEmergencyStage.manual);
+    await _playAndWait(_Audio.manualIntro);
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Voice flow
+  // ──────────────────────────────────────────────────────────────────
+
+  Future<bool> _ensureVoicePermissions() async {
+    var mic    = await ph.Permission.microphone.status;
+    var speech = await ph.Permission.speech.status;
+
+    if (mic.isDenied)    mic    = await ph.Permission.microphone.request();
+    if (speech.isDenied) speech = await ph.Permission.speech.request();
+
+    final granted = mic.isGranted && speech.isGranted;
+    if (!granted) {
+      debugPrint('🎙️ SE permission denied: mic=$mic speech=$speech');
+    }
+    return granted;
+  }
+
+  Future<void> _runVoiceFlow() async {
+    _setStage(SettingsEmergencyStage.startingListen);
+    await _playAndWait(_Audio.startListening);
+    if (_disposed || _stage != SettingsEmergencyStage.startingListen) return;
+
+    final granted = await _ensureVoicePermissions();
+    if (!granted) {
+      _setStage(SettingsEmergencyStage.idle);
+      return;
+    }
+
+    if (!_speechAvailable) {
+      _speechAvailable = await _speech.initialize(
+        onStatus: _onSpeechStatus,
+        onError:  _onSpeechError,
+      );
+    }
+    if (!_speechAvailable) {
+      debugPrint('🎙️ SE STT unavailable');
+      await _handleInvalid();
+      return;
+    }
+
+    _setStage(SettingsEmergencyStage.listening);
+    _recognizedNumber  = '';
+    _heardText         = '';
+    _accumulatedText   = '';
+    _processed         = false;
+    _userStopRequested = false;
+    _restartFailures   = 0;
+
+    await _speech.listen(
+      localeId: 'ar_SA',
+      listenOptions: stt.SpeechListenOptions(
+        listenMode: stt.ListenMode.dictation,
+        partialResults: true,
+        cancelOnError: false,
+      ),
+      pauseFor:  const Duration(minutes: 10),
+      listenFor: const Duration(minutes: 5),
+      onResult:  _onSpeechResult,
+    );
+  }
+
+  void _onSpeechStatus(String status) {
+    debugPrint('🎙️ SE STT status: $status');
+    if ((status == 'notListening' || status == 'done') &&
+        _stage == SettingsEmergencyStage.listening &&
+        !_processed) {
+      if (_userStopRequested) {
+        _process(_accumulatedText);
+      } else {
+        _restartListening();
+      }
+    }
+  }
+
+  void _onSpeechError(dynamic error) {
+    debugPrint('🎙️ SE STT error: $error');
+    if (_stage != SettingsEmergencyStage.listening || _processed) return;
+    if (_userStopRequested) {
+      _processed = true;
+      _handleInvalid();
+      return;
+    }
+    _restartFailures++;
+    if (_restartFailures >= 4) {
+      _processed = true;
+      _handleInvalid();
+      return;
+    }
+    _restartListening();
+  }
+
+  void _onSpeechResult(dynamic result) {
+    final words   = (result.recognizedWords as String?) ?? '';
+    final isFinal = (result.finalResult as bool?) ?? false;
+    debugPrint('🎙️ SE heard: "$words" final=$isFinal');
+
+    final live = ('$_accumulatedText $words').trim();
+    _heardText = live;
+    if (isFinal && words.isNotEmpty) {
+      _accumulatedText = live;
+    }
+    notifyListeners();
+  }
+
+  Future<void> _restartListening() async {
+    if (_disposed) return;
+    if (_stage != SettingsEmergencyStage.listening) return;
+    if (_processed) return;
+    if (_userStopRequested) return;
+
+    debugPrint('🔄 SE restart listen (failures=$_restartFailures)');
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (_disposed ||
+        _userStopRequested ||
+        _stage != SettingsEmergencyStage.listening ||
+        _processed) {
+      return;
+    }
+
+    try {
+      await _speech.listen(
+        localeId: 'ar_SA',
+        listenOptions: stt.SpeechListenOptions(
+          listenMode: stt.ListenMode.dictation,
+          partialResults: true,
+          cancelOnError: false,
+        ),
+        pauseFor:  const Duration(minutes: 10),
+        listenFor: const Duration(minutes: 5),
+        onResult:  _onSpeechResult,
+      );
+    } catch (e) {
+      debugPrint('🔄 SE restart failed: $e');
+      _restartFailures++;
+      if (_restartFailures < 4) {
+        _restartListening();
+      } else {
+        _processed = true;
+        _handleInvalid();
+      }
+    }
+  }
+
+  Future<void> _process(String words) async {
+    if (_processed) return;
+    _processed = true;
+    if (_stage != SettingsEmergencyStage.listening) return;
+
+    _setStage(SettingsEmergencyStage.processing);
+    final digits = _arabicSpeechToDigits(words);
+    _lastParsedDigits = digits;
+    debugPrint('🎙️ SE parsed: "$digits" (len=${digits.length})');
+
+    await _playAndWait(_Audio.processing);
+    if (_disposed || _stage != SettingsEmergencyStage.processing) return;
+
+    if (!_isValidNumber(digits)) {
+      await _handleInvalid();
+      return;
+    }
+
+    _recognizedNumber = digits;
+    _setStage(SettingsEmergencyStage.confirming);
+
+    await _playAndWait(_Audio.confirmNumber);
+    if (_disposed || _stage != SettingsEmergencyStage.confirming) return;
+
+    for (final ch in digits.split('')) {
+      final d = int.tryParse(ch);
+      if (d == null) continue;
+      await _playAndWait(_Audio.digit(d));
+      if (_disposed || _stage != SettingsEmergencyStage.confirming) return;
+    }
+
+    await _playAndWait(_Audio.tapToSave);
+    if (_disposed || _stage != SettingsEmergencyStage.confirming) return;
+
+    _setStage(SettingsEmergencyStage.awaitingSave);
+  }
+
+  Future<void> _saveAndNavigate(String digits) async {
+    if (_stage == SettingsEmergencyStage.saving) return;
+    if (!_isValidNumber(digits)) {
+      debugPrint('🚨 SE _saveAndNavigate: invalid number "$digits"');
+      await _handleInvalid();
+      return;
+    }
+    _setStage(SettingsEmergencyStage.saving);
+    try {
+      debugPrint('💾 SE Prefs.saveEmergencyNumber("$digits") …');
+      await Prefs.saveEmergencyNumber(digits);
+      debugPrint('💾 SE   → saved OK');
+      if (_disposed) {
+        debugPrint('💾 SE   → controller disposed mid-save');
+        return;
+      }
+      _shouldNavigate = true;
+      debugPrint('💾 SE   → _shouldNavigate=true, notifying listeners');
+      notifyListeners();
+    } catch (e) {
+      debugPrint('🚨 SE save failed: $e');
+      _setStage(SettingsEmergencyStage.awaitingSave);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Manual mode (silent)
+  // ──────────────────────────────────────────────────────────────────
+
+  String? validateManualNumber(String? value) {
+    final input = (value ?? '').trim();
+    if (input.isEmpty) return 'الرجاء إدخال رقم الطوارئ';
+    final digits = input.replaceAll(RegExp(r'[^\d]'), '');
+    if (!_isValidNumber(digits)) {
+      return 'يجب أن يبدأ الرقم بـ 05 ويتكون من 10 أرقام';
+    }
+    return null;
+  }
+
+  Future<bool> saveManualNumber(String rawNumber) async {
+    if (_stage == SettingsEmergencyStage.saving) return false;
+    final digits = rawNumber.replaceAll(RegExp(r'[^\d]'), '');
+    if (!_isValidNumber(digits)) return false;
+    _setStage(SettingsEmergencyStage.saving);
+    try {
+      await Prefs.saveEmergencyNumber(digits);
+      return true;
+    } catch (e) {
+      debugPrint('🚨 SE manual save failed: $e');
+      _setStage(SettingsEmergencyStage.manual);
+      return false;
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Helpers
+  // ──────────────────────────────────────────────────────────────────
+
+  bool _isValidNumber(String digits) => RegExp(r'^05\d{8}$').hasMatch(digits);
+
+  Future<void> _handleInvalid() async {
+    if (_disposed) return;
+    _setStage(SettingsEmergencyStage.invalid);
+    await _playAndWait(_Audio.invalidVoice);
+    if (_disposed) return;
+    _setStage(SettingsEmergencyStage.idle);
+  }
+
+  Future<void> _cancelEverything() async {
+    _processed         = true;
+    _userStopRequested = true;
+    _heardText         = '';
+    _accumulatedText   = '';
+    _restartFailures   = 0;
+    try { await _audioPlayer.stop(); } catch (_) {}
+    if (_speech.isListening) {
+      try { await _speech.cancel(); } catch (_) {}
+    }
+  }
+
+  void _setStage(SettingsEmergencyStage s) {
+    if (_disposed) return;
+    _stage = s;
+    notifyListeners();
+  }
+
+  Future<void> _playAndWait(String path) async {
+    debugPrint('🔊 SE play: $path');
+    final completer = Completer<void>();
+    final sub = _audioPlayer.onPlayerComplete.listen((_) {
+      if (!completer.isCompleted) completer.complete();
+    });
+    try {
+      await _audioPlayer.stop();
+      await _audioPlayer.play(AssetSource(path));
+      await completer.future.timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => debugPrint('🔊 SE audio timeout: $path'),
+      );
+    } catch (e) {
+      debugPrint('🔊 SE audio error ($path): $e');
+    } finally {
+      await sub.cancel();
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Arabic speech → digits (0-9). Kept here so this controller has no source
+//  dependency on setup_controller.dart.
+// ─────────────────────────────────────────────────────────────────────────────
+
+String _arabicSpeechToDigits(String text) {
+  if (text.isEmpty) return '';
+
+  const eastern = '٠١٢٣٤٥٦٧٨٩';
+  const arabicWordToDigit = <String, String>{
+    'صفر': '0', 'سفر': '0', 'صفرا': '0', 'صفرة': '0',
+    'واحد': '1', 'وحد': '1', 'وحدة': '1', 'واحدة': '1',
+    'اثنان': '2', 'اثنين': '2', 'إثنان': '2', 'إثنين': '2',
+    'تنين': '2', 'اتنين': '2', 'إتنين': '2', 'ثنين': '2',
+    'ثلاثة': '3', 'ثلاث': '3', 'تلاتة': '3', 'تلاثة': '3', 'ثلاثه': '3',
+    'أربعة': '4', 'اربعة': '4', 'أربع': '4', 'اربع': '4', 'اربعه': '4',
+    'خمسة': '5', 'خمس': '5', 'خمسه': '5',
+    'ستة': '6', 'ست': '6', 'سته': '6', 'ستا': '6',
+    'سبعة': '7', 'سبع': '7', 'سبعه': '7',
+    'ثمانية': '8', 'ثماني': '8', 'تمانية': '8', 'تماني': '8', 'ثمانيه': '8',
+    'تسعة': '9', 'تسع': '9', 'تسعه': '9',
+  };
+
+  final buf  = StringBuffer();
+  final arab = RegExp(r'[؀-ۿ]');
+  int i = 0;
+  while (i < text.length) {
+    final ch = text[i];
+
+    if (RegExp(r'[0-9]').hasMatch(ch)) { buf.write(ch); i++; continue; }
+
+    final ei = eastern.indexOf(ch);
+    if (ei >= 0) { buf.write(ei); i++; continue; }
+
+    if (arab.hasMatch(ch)) {
+      var j = i;
+      while (j < text.length && arab.hasMatch(text[j])) { j++; }
+      final word   = text.substring(i, j);
+      final mapped = arabicWordToDigit[word];
+      if (mapped != null) buf.write(mapped);
+      i = j;
+      continue;
+    }
+
+    i++;
+  }
+
+  return _normalizeSaudiNumber(buf.toString());
+}
+
+String _normalizeSaudiNumber(String d) {
+  if (d.startsWith('00966')) {
+    d = '0${d.substring(5)}';
+  } else if (d.startsWith('966')) {
+    d = '0${d.substring(3)}';
+  }
+  if (d.length == 9 && d.startsWith('5')) d = '0$d';
+  if (d.length != 10) {
+    final m = RegExp(r'05\d{8}').firstMatch(d);
+    if (m != null) return m.group(0)!;
+  }
+  return d;
+}
