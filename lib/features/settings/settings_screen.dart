@@ -5,13 +5,16 @@ import 'package:flutter/material.dart';
 import 'package:gp_hudai/app/app_routes.dart';
 import 'package:gp_hudai/features/settings/settings_controller.dart';
 
-/// Settings screen — UI only.
+/// Settings — voice-edit emergency-number screen.
 ///
-/// Two tap zones (per spec):
-///   - Top-left corner  → small "back" tap area  → Navigator.pop
-///   - Anywhere else    → opens emergency-number edit (reuses SetupScreen)
+/// Reached from the Camera screen's top-left tap. This is now the single
+/// place where the user re-records the emergency number after first
+/// launch: the page IS the voice flow (no intermediate tile).
 ///
-/// All audio + state lives in [SettingsController].
+/// Gestures (identical to the first-launch Setup screen):
+///   - Single tap → start voice flow / stop mic / retry in awaitingSave
+///   - Double tap → switch to silent manual keyboard mode
+///   - Long press → save + pop back to Camera (only in awaitingSave)
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -20,76 +23,85 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen>
-    with TickerProviderStateMixin {
-  late final SettingsController _controller;
-
-  // Subtle ambient glow — view-only, no app state.
-  late final AnimationController _glowCtrl;
-  late final Animation<double> _glowAnim;
+    with SingleTickerProviderStateMixin {
+  final _formKey             = GlobalKey<FormState>();
+  final _emergencyController = TextEditingController();
+  late final SettingsController  _controller;
+  late final AnimationController _pulse;
 
   @override
   void initState() {
     super.initState();
-
     _controller = SettingsController();
     _controller.addListener(_onControllerUpdate);
     _controller.initialize();
 
-    _glowCtrl = AnimationController(
+    _pulse = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2400),
+      duration: const Duration(milliseconds: 1100),
     )..repeat(reverse: true);
-    _glowAnim = Tween<double>(
-      begin: 0.55,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
   }
 
   @override
   void dispose() {
     _controller.removeListener(_onControllerUpdate);
     _controller.dispose();
-    _glowCtrl.dispose();
+    _emergencyController.dispose();
+    _pulse.dispose();
     super.dispose();
   }
 
   void _onControllerUpdate() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    if (_controller.shouldNavigate) {
+      _controller.clearNavigationFlag();
+      _navigateToCamera();
+      return;
+    }
+    setState(() {});
   }
 
-  // ── Tap handlers ──────────────────────────────────────────────────────
-
-  Future<void> _onBackTap() async {
-    debugPrint('👆 settings: back');
-    await _controller.stopAudio();
-    if (!mounted) return;
-    Navigator.pop(context);
+  // ───────────────────────────────────────────────────────────────────
+  // Manual save handler
+  // ───────────────────────────────────────────────────────────────────
+  Future<void> _onManualSave() async {
+    if (!_formKey.currentState!.validate()) return;
+    final ok = await _controller.saveManualNumber(_emergencyController.text);
+    if (!mounted || !ok) return;
+    _navigateToCamera();
   }
 
-  Future<void> _onEditEmergencyTap() async {
-    debugPrint('👆 settings: open emergency edit');
-    // Fully release the Settings AudioPlayer BEFORE pushing Setup. If we
-    // only call stopAudio(), three live AudioPlayer instances (Camera's
-    // AudioService + Settings + Setup) compete for the Android audio
-    // focus and Setup's confirm sequence can fail silently — which is
-    // why the user previously reported the screen "going silent after
-    // recognition" and long-press doing nothing.
-    //
-    // We keep Settings in the route stack (so CameraScreen._onSettingsTap
-    // stays suspended on its awaited pushNamed), but free its audio.
-    await _controller.releaseAudio();
-    if (!mounted) return;
-    await Navigator.pushNamed(context, AppRoutes.setup);
-    // Settings will only be reached again if the user backs out of Setup
-    // without saving. Nothing to refresh: SetupScreen._navigateToCamera
-    // pops Settings on a successful save, so this line never runs in the
-    // save path.
-    if (!mounted) return;
-    _controller.refreshCurrentNumber();
+  /// Pops back to the existing Camera route. Camera is always in the
+  /// stack when this screen runs (Camera → Settings).
+  void _navigateToCamera() {
+    debugPrint('🧭 settings _navigateToCamera() called');
+    final navigator = Navigator.of(context);
+
+    bool cameraFound = false;
+    navigator.popUntil((route) {
+      final name = route.settings.name ?? '<unnamed>';
+      if (route.settings.name == AppRoutes.camera) {
+        cameraFound = true;
+        debugPrint('🧭 settings   → found camera, stopping pop');
+        return true;
+      }
+      if (route.isFirst) {
+        debugPrint('🧭 settings   → bottom reached at "$name", stopping');
+        return true;
+      }
+      debugPrint('🧭 settings   → popping "$name"');
+      return false;
+    });
+
+    if (!cameraFound) {
+      debugPrint('🧭 settings   → no Camera, pushReplacement(/camera)');
+      navigator.pushReplacementNamed(AppRoutes.camera);
+    }
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────
-
+  // ───────────────────────────────────────────────────────────────────
+  // Build
+  // ───────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -98,72 +110,154 @@ class _SettingsScreenState extends State<SettingsScreen>
         fit: StackFit.expand,
         children: [
           const _Background(),
-
-          // Main full-screen tap zone → opens emergency-number edit.
-          // (Whole area is tappable for blind-user accessibility, but
-          // visually it's a normal settings page with an option card.)
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _onEditEmergencyTap,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const SizedBox(height: 90),
-
-                    const Text(
-                      'الإعدادات',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 30,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-
-                    const SizedBox(height: 36),
-
-                    AnimatedBuilder(
-                      animation: _glowAnim,
-                      builder: (_, __) => _SettingsTile(
-                        icon: Icons.phone_in_talk_rounded,
-                        title: 'تعديل رقم الطوارئ',
-                        currentNumber: _controller.currentNumber,
-                        glow: _glowAnim.value,
-                        onTap: _onEditEmergencyTap,
-                      ),
-                    ),
-
-                    const Spacer(),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // Back tap zone — small top-right corner (RTL layout).
-          Positioned(
-            top: 0,
-            right: 0,
-            child: SafeArea(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _onBackTap,
-                child: const _BackBadge(),
-              ),
+          SafeArea(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 350),
+              child: _controller.isManual
+                  ? _buildManualMode()
+                  : _buildVoiceMode(),
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _buildVoiceMode() {
+    return GestureDetector(
+      key: const ValueKey('voice'),
+      behavior: HitTestBehavior.opaque,
+      onTap: _controller.onSingleTap,
+      onDoubleTap: _controller.onDoubleTap,
+      onLongPress: _controller.onLongPress,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          children: [
+            const SizedBox(height: 70),
+            const Text(
+              'رقم الطوارئ',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontFamily: 'IBMPlexSansArabic',
+                fontWeight: FontWeight.w400,
+                fontSize: 32,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const Spacer(),
+            AnimatedBuilder(
+              animation: _pulse,
+              builder: (_, __) {
+                final t = _controller.isListening ? _pulse.value : 0.0;
+                return _MicOrb(pulse: t, listening: _controller.isListening);
+              },
+            ),
+            const SizedBox(height: 28),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: _buildSubMic(),
+            ),
+            const Spacer(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSubMic() {
+    final stage      = _controller.stage;
+    final heard      = _controller.heardText;
+    final recognized = _controller.recognizedNumber;
+
+    if (stage == SettingsStage.listening && heard.isNotEmpty) {
+      return _NumberChip(
+        key: const ValueKey('chip-live'),
+        text: heard,
+        isFinal: false,
+      );
+    }
+
+    final hasFinal = recognized.isNotEmpty &&
+        (stage == SettingsStage.confirming ||
+            stage == SettingsStage.awaitingSave ||
+            stage == SettingsStage.saving);
+    if (hasFinal) {
+      return _NumberChip(
+        key: const ValueKey('chip-final'),
+        text: _formatSaudiNumber(recognized),
+        isFinal: true,
+      );
+    }
+
+    final isBusy = stage == SettingsStage.processing ||
+        stage == SettingsStage.invalid ||
+        stage == SettingsStage.saving;
+    if (isBusy) {
+      return const _ProcessingDots(key: ValueKey('dots'));
+    }
+
+    return const SizedBox.shrink(key: ValueKey('empty'));
+  }
+
+  static String _formatSaudiNumber(String digits) {
+    if (digits.length != 10) return digits;
+    return '${digits.substring(0, 3)} '
+        '${digits.substring(3, 6)} '
+        '${digits.substring(6)}';
+  }
+
+  Widget _buildManualMode() {
+    return Padding(
+      key: const ValueKey('manual'),
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 70),
+            const Text(
+              'رقم الطوارئ',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 32,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'يرجى إدخال رقم هاتف يدويًا.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.55),
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 50),
+            _GlassyTextField(
+              controller: _emergencyController,
+              validator: _controller.validateManualNumber,
+            ),
+            const SizedBox(height: 30),
+            _GlowingSaveButton(
+              saving: _controller.stage == SettingsStage.saving,
+              onTap: _onManualSave,
+            ),
+            const Spacer(),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Background — same as the voice instructions screen
+//  Helper widgets (local copies, no source dependency on the Setup screen)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Background extends StatelessWidget {
@@ -174,7 +268,7 @@ class _Background extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+          end:   Alignment.bottomCenter,
           colors: [
             Color(0xFF030A20),
             Color(0xFF071540),
@@ -188,229 +282,241 @@ class _Background extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Glassy settings option tile (list-style, with leading icon + chevron).
-// ─────────────────────────────────────────────────────────────────────────────
+class _MicOrb extends StatelessWidget {
+  const _MicOrb({required this.pulse, required this.listening});
 
-class _SettingsTile extends StatelessWidget {
-  const _SettingsTile({
-    required this.icon,
-    required this.title,
-    required this.currentNumber,
-    required this.glow,
-    required this.onTap,
-  });
+  final double pulse;
+  final bool   listening;
 
-  final IconData icon;
-  final String title;
-  final String? currentNumber;
-  final double glow;
-  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    final base = listening ? 0.45 : 0.30;
+    final glow = base + pulse * 0.45;
+
+    return Container(
+      width: 160,
+      height: 160,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          colors: [Color(0xFF40E0FF), Color(0xFF1855FF)],
+          begin: Alignment.topLeft,
+          end:   Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1855FF).withOpacity(glow),
+            blurRadius: 40 + pulse * 18,
+            spreadRadius: 4 + pulse * 6,
+          ),
+          BoxShadow(
+            color: const Color(0xFF00CFFF).withOpacity(glow * 0.5),
+            blurRadius: 70 + pulse * 24,
+            spreadRadius: 12 + pulse * 8,
+          ),
+        ],
+      ),
+      child: const Icon(Icons.mic, color: Colors.white, size: 64),
+    );
+  }
+}
+
+class _NumberChip extends StatelessWidget {
+  const _NumberChip({super.key, required this.text, required this.isFinal});
+
+  final String text;
+  final bool   isFinal;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.22)),
+      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+        style: TextStyle(
+          color: isFinal ? Colors.white : Colors.white.withOpacity(0.85),
+          fontSize: isFinal ? 24 : 18,
+          fontWeight: FontWeight.w700,
+          letterSpacing: isFinal ? 2.0 : 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _ProcessingDots extends StatefulWidget {
+  const _ProcessingDots({super.key});
+
+  @override
+  State<_ProcessingDots> createState() => _ProcessingDotsState();
+}
+
+class _ProcessingDotsState extends State<_ProcessingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) {
+        final step = (_ctrl.value * 3).floor().clamp(0, 2);
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (i) {
+            final on = i <= step;
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOut,
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: on ? Colors.white : Colors.white.withOpacity(0.20),
+                ),
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+}
+
+class _GlassyTextField extends StatelessWidget {
+  const _GlassyTextField({required this.controller, required this.validator});
+  final TextEditingController controller;
+  final String? Function(String?)? validator;
 
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(16),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withOpacity(0.20)),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(
-                    0xFF1855FF,
-                  ).withOpacity(0.20 + 0.15 * glow),
-                  blurRadius: 28,
-                  spreadRadius: 1,
-                ),
-                BoxShadow(
-                  color: const Color(0xFF00CFFF).withOpacity(0.12 * glow),
-                  blurRadius: 45,
-                  spreadRadius: 4,
-                ),
-              ],
-            ),
-            child: Directionality(
-              textDirection: TextDirection.rtl,
-              child: Row(
-                children: [
-                  // Leading glassy icon chip — on the right in RTL
-                  _UnifiedIconBadge(icon: icon, size: 56, iconSize: 28),
-
-                  const SizedBox(width: 14),
-
-                  // Title + current number (or "not set" hint)
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.2,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        _CurrentNumberLine(number: currentNumber),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(width: 8),
-
-                  Icon(
-                    Icons.chevron_left,
-                    color: Colors.white.withOpacity(0.55),
-                    size: 22,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Inline display of the currently saved emergency number (or hint if none).
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _CurrentNumberLine extends StatelessWidget {
-  const _CurrentNumberLine({required this.number});
-  final String? number;
-
-  @override
-  Widget build(BuildContext context) {
-    final hasNumber = number != null && number!.trim().isNotEmpty;
-    return Row(
-      children: [
-        Text(
-          'الرقم الحالي:',
-          style: TextStyle(color: Colors.white.withOpacity(0.55), fontSize: 13),
-        ),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            hasNumber ? number! : 'غير محفوظ',
-            // Force LTR for the number so digits read left-to-right even
-            // inside an RTL row.
-            textDirection: TextDirection.ltr,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: hasNumber
-                  ? const Color(0xFF40E0FF)
-                  : Colors.white.withOpacity(0.45),
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              letterSpacing: hasNumber ? 1.5 : 0.2,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Glassy back badge in the top-right corner (RTL).
-//  Visually hints at "back" without being a tiny iOS-style chevron — the
-//  actual hit area extends well past the visible chip.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _BackBadge extends StatelessWidget {
-  const _BackBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 10, right: 10),
-      child: SizedBox(
-        // Generous tap area for blind/low-vision users.
-        width: 110,
-        height: 110,
-        child: Align(
-          alignment: Alignment.topRight,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(22),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: const SizedBox(
-                  width: 64,
-                  height: 64,
-                  child: Center(
-                    child: _UnifiedIconBadge(
-                      icon: Icons.arrow_forward_ios_rounded,
-                      size: 46,
-                      iconSize: 22,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Unified icon style shared with the camera screen.
-class _UnifiedIconBadge extends StatelessWidget {
-  const _UnifiedIconBadge({
-    required this.icon,
-    this.size = 46,
-    this.iconSize = 22,
-  });
-
-  final IconData icon;
-  final double size;
-  final double iconSize;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipOval(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
-          width: size,
-          height: size,
           decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withOpacity(0.22),
-                const Color(0xFF40E0FF).withOpacity(0.10),
-              ],
-            ),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.32),
-              width: 1.0,
-            ),
+            color: Colors.white.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.20)),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF1855FF).withOpacity(0.18),
-                blurRadius: 12,
-                spreadRadius: 1,
+                color: Colors.black.withOpacity(0.12),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
-          child: Icon(icon, color: Colors.white, size: iconSize),
+          child: TextFormField(
+            controller: controller,
+            keyboardType: TextInputType.phone,
+            textAlign: TextAlign.center,
+            cursorColor: const Color(0xFF40E0FF),
+            validator: validator,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              letterSpacing: 1.2,
+              fontWeight: FontWeight.w500,
+            ),
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                vertical: 22,
+                horizontal: 16,
+              ),
+              hintText: '+966',
+              hintStyle: TextStyle(
+                color: Colors.white.withOpacity(0.30),
+                fontSize: 18,
+              ),
+              errorStyle: const TextStyle(
+                color: Color(0xFFFF8A8A),
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GlowingSaveButton extends StatelessWidget {
+  const _GlowingSaveButton({required this.saving, required this.onTap});
+  final bool saving;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: saving ? null : onTap,
+      child: Container(
+        height: 60,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(40),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF40E0FF), Color(0xFF1855FF)],
+            begin: Alignment.topLeft,
+            end:   Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF1855FF).withOpacity(0.55),
+              blurRadius: 32,
+              spreadRadius: 1,
+              offset: const Offset(0, 6),
+            ),
+            BoxShadow(
+              color: const Color(0xFF00CFFF).withOpacity(0.30),
+              blurRadius: 60,
+              spreadRadius: 8,
+            ),
+          ],
+        ),
+        child: Center(
+          child: saving
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text(
+                  'حفظ',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+                ),
         ),
       ),
     );
