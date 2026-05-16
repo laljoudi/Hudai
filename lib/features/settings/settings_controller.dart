@@ -41,6 +41,7 @@ class SettingsController extends ChangeNotifier {
 
   bool    _disposed      = false;
   bool    _stopped       = false;
+  bool    _audioReleased = false;
   String? _currentNumber;
 
   /// The emergency number currently saved in Prefs, or null if none yet.
@@ -83,7 +84,11 @@ class SettingsController extends ChangeNotifier {
     debugPrint('SettingsController: dispose()');
     _disposed = true;
     _stopped  = true;
-    _player.dispose();
+    // releaseAudio() may have already disposed the player.
+    if (!_audioReleased) {
+      _audioReleased = true;
+      try { _player.dispose(); } catch (_) {}
+    }
     super.dispose();
   }
 
@@ -92,10 +97,28 @@ class SettingsController extends ChangeNotifier {
   // ──────────────────────────────────────────────────────────────────
 
   /// Stop any audio that may still be playing and prevent the sequence
-  /// loop from advancing to the next clip.
+  /// loop from advancing to the next clip. Safe to call after
+  /// [releaseAudio] — becomes a no-op.
   Future<void> stopAudio() async {
     _stopped = true;
+    if (_audioReleased) return;
     try { await _player.stop(); } catch (_) {}
+  }
+
+  /// Stop AND fully dispose the AudioPlayer. Call this before pushing
+  /// the SetupScreen on top of Settings, so Setup's audio sequence does
+  /// not have to compete with Settings' (now idle) player for the
+  /// Android audio focus.
+  ///
+  /// Safe to call multiple times. After release, [stopAudio] and the
+  /// dispose() destructor become no-ops on the player.
+  Future<void> releaseAudio() async {
+    if (_audioReleased) return;
+    _audioReleased = true;
+    _stopped = true;
+    try { await _player.stop(); } catch (_) {}
+    try { await _player.dispose(); } catch (_) {}
+    debugPrint('SettingsController: 🔇 audio released');
   }
 
   /// Re-read the saved emergency number from storage. Call this on screen
