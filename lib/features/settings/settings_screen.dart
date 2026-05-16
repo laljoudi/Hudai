@@ -68,10 +68,22 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Future<void> _onEditEmergencyTap() async {
     debugPrint('👆 settings: open emergency edit');
-    await _controller.stopAudio();
+    // Fully release the Settings AudioPlayer BEFORE pushing Setup. If we
+    // only call stopAudio(), three live AudioPlayer instances (Camera's
+    // AudioService + Settings + Setup) compete for the Android audio
+    // focus and Setup's confirm sequence can fail silently — which is
+    // why the user previously reported the screen "going silent after
+    // recognition" and long-press doing nothing.
+    //
+    // We keep Settings in the route stack (so CameraScreen._onSettingsTap
+    // stays suspended on its awaited pushNamed), but free its audio.
+    await _controller.releaseAudio();
     if (!mounted) return;
     await Navigator.pushNamed(context, AppRoutes.setup);
-    // Returned from the setup screen — reload in case the user changed it.
+    // Settings will only be reached again if the user backs out of Setup
+    // without saving. Nothing to refresh: SetupScreen._navigateToCamera
+    // pops Settings on a successful save, so this line never runs in the
+    // save path.
     if (!mounted) return;
     _controller.refreshCurrentNumber();
   }
