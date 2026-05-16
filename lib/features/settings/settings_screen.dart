@@ -230,26 +230,7 @@ class _SettingsTile extends StatelessWidget {
               child: Row(
                 children: [
                   // Leading glassy icon chip — on the right in RTL
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF40E0FF), Color(0xFF1855FF)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF1855FF).withOpacity(0.45),
-                          blurRadius: 20,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                    child: Icon(icon, color: Colors.white, size: 28),
-                  ),
+                  _UnifiedIconBadge(icon: icon, size: 56, iconSize: 28),
 
                   const SizedBox(width: 14),
 
@@ -276,9 +257,9 @@ class _SettingsTile extends StatelessWidget {
                   const SizedBox(width: 8),
 
                   Icon(
-                    Icons.arrow_back_ios_new,
+                    Icons.chevron_left,
                     color: Colors.white.withOpacity(0.55),
-                    size: 16,
+                    size: 22,
                   ),
                 ],
               ),
@@ -331,7 +312,7 @@ class _CurrentNumberLine extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Glassy back badge in the top-left corner.
+//  Glassy back badge in the top-right corner (RTL).
 //  Visually hints at "back" without being a tiny iOS-style chevron — the
 //  actual hit area extends well past the visible chip.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -355,30 +336,69 @@ class _BackBadge extends StatelessWidget {
               borderRadius: BorderRadius.circular(22),
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: Container(
+                child: const SizedBox(
                   width: 64,
                   height: 64,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: Colors.white.withOpacity(0.20)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF1855FF).withOpacity(0.25),
-                        blurRadius: 18,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.arrow_back_ios_new,
-                    color: Colors.white,
-                    size: 22,
+                  child: Center(
+                    child: _UnifiedIconBadge(
+                      icon: Icons.arrow_forward_ios_rounded,
+                      size: 46,
+                      iconSize: 22,
+                    ),
                   ),
                 ),
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Unified icon style shared with the camera screen.
+class _UnifiedIconBadge extends StatelessWidget {
+  const _UnifiedIconBadge({
+    required this.icon,
+    this.size = 46,
+    this.iconSize = 22,
+  });
+
+  final IconData icon;
+  final double size;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipOval(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withOpacity(0.22),
+                const Color(0xFF40E0FF).withOpacity(0.10),
+              ],
+            ),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.32),
+              width: 1.0,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF1855FF).withOpacity(0.18),
+                blurRadius: 12,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: Icon(icon, color: Colors.white, size: iconSize),
         ),
       ),
     );

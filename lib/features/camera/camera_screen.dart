@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:camera/camera.dart' show CameraPreview;
 import 'package:flutter/material.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'package:gp_hudai/app/app_routes.dart';
 import 'package:gp_hudai/core/models/detection.dart';
@@ -13,9 +15,8 @@ import 'package:gp_hudai/widgets/detection_overlay.dart';
 /// All logic (camera, audio, AI, location) lives in CameraController.
 /// This file is responsible only for:
 ///   - Displaying the camera preview
-///   - Drawing the 4 quadrant tap zones
-///   - Drawing the glassy header / footer overlays
-///   - Forwarding user taps to the controller
+///   - Drawing the 4 corner glassy buttons (visual only — they don't catch taps)
+///   - Forwarding user taps to the controller via the 3-section tap layout
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
 
@@ -32,16 +33,17 @@ class _CameraScreenState extends State<CameraScreen> {
     _controller = CameraController();
     _controller.addListener(_onControllerUpdate);
     _controller.initialize();
+    unawaited(WakelockPlus.enable());
   }
 
   @override
   void dispose() {
     _controller.removeListener(_onControllerUpdate);
     _controller.dispose();
+    unawaited(WakelockPlus.disable());
     super.dispose();
   }
 
-  /// Called whenever the controller publishes a state change.
   void _onControllerUpdate() {
     if (mounted) setState(() {});
   }
@@ -72,170 +74,68 @@ class _CameraScreenState extends State<CameraScreen> {
           // Layer 0 — Camera feed
           _buildCamera(),
 
-          // Layer 1 - Live detection boxes
+          // Layer 1 — Live detection boxes
           Positioned.fill(child: _buildDetectionOverlay()),
 
-          // Layer 1 — 4 invisible quadrant tap zones (entire screen)
-          Positioned.fill(child: _buildQuadrants()),
+          // Layer 2 — 3-section invisible tap layout (entire screen)
+          Positioned.fill(child: _buildTapLayout()),
 
-          // Layer 2 — Visual glassy header (top corners icons)
+          // Layer 3 — Four glassy corner buttons (visual only)
           SafeArea(
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: _buildGlassyHeader(),
-            ),
-          ),
-
-          // Layer 3 — Visual glassy footer (bottom corners icons)
-          Align(alignment: Alignment.bottomCenter, child: _buildGlassyFooter()),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetectionOverlay() {
-    final cam = _controller.cameraController;
-    if (cam == null || !cam.value.isInitialized) {
-      return const SizedBox.shrink();
-    }
-
-    return ValueListenableBuilder<List<Detection>>(
-      valueListenable: _controller.detectionsListenable,
-      builder: (context, detections, _) {
-        return DetectionOverlay(
-          detections: detections,
-          cameraAspectRatio: cam.value.aspectRatio,
-        );
-      },
-    );
-  }
-
-  /// Three-section tap layout (replaces the old 2x2 quadrant grid).
-  ///
-  /// Top section    (top 30%):  Settings (left) + Emergency call (right)
-  /// Middle section (middle 40%): Dead zone — taps ignored on purpose
-  /// Bottom section (bottom 30%): Replay (left) + Location (right)
-  ///
-  /// Heights are flex values — they auto-scale to any iPhone screen size.
-  Widget _buildQuadrants() {
-    return Column(
-      children: [
-        // ── TOP SECTION (30% of height) ─────────────────────────────
-        Expanded(
-          flex: 3,
-          child: Row(
-            children: [
-              Expanded(child: _quadrant(onTap: _onSettingsTap)),
-              Expanded(child: _quadrant(onTap: _controller.onEmergencyTap)),
-            ],
-          ),
-        ),
-
-        // ── MIDDLE DEAD ZONE (40% of height) ────────────────────────
-        // Uses IgnorePointer so taps pass through to nothing — no action.
-        const Expanded(flex: 4, child: IgnorePointer(child: SizedBox.expand())),
-
-        // ── BOTTOM SECTION (30% of height) ──────────────────────────
-        Expanded(
-          flex: 3,
-          child: Row(
-            children: [
-              Expanded(
-                child: _quadrant(onTap: _controller.onReplayInstructionsTap),
-              ),
-              Expanded(child: _quadrant(onTap: _controller.onLocationTap)),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _quadrant({required Function() onTap}) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: () => onTap(),
-      child: const SizedBox.expand(),
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────
-  //  Glassy header — Settings (left) + Emergency (right)
-  // ───────────────────────────────────────────────────────────────────
-  Widget _buildGlassyHeader() {
-    return IgnorePointer(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        height: 64,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(32),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.10),
-                borderRadius: BorderRadius.circular(32),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.20),
-                  width: 1.0,
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 22),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
-                  _GlassyIconBadge(icon: Icons.settings),
-                  _GlassyIconBadge(icon: Icons.call),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────
-  //  Glassy footer — Replay (left) + Location (right)
-  // ───────────────────────────────────────────────────────────────────
-  Widget _buildGlassyFooter() {
-    return IgnorePointer(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        height: 76,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(38),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.10),
-                borderRadius: BorderRadius.circular(38),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.20),
-                  width: 1.0,
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 28),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  const _GlassyIconBadge(icon: Icons.replay),
-                  _controller.locationBusy
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.4,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const _GlassyIconBadge(icon: Icons.location_on),
+                  // Top-left: Settings
+                  const Align(
+                    alignment: Alignment.topLeft,
+                    child: IgnorePointer(
+                      child: _GlassyButton(
+                        icon: Icons.settings,
+                        iconColor: Color(0xFF70F0FF),
+                      ),
+                    ),
+                  ),
+
+                  // Top-right: Emergency call
+                  const Align(
+                    alignment: Alignment.topRight,
+                    child: IgnorePointer(
+                      child: _GlassyButton(
+                        icon: Icons.call,
+                        iconColor: Color(0xFFFF6B6B),
+                      ),
+                    ),
+                  ),
+
+                  // Bottom-left: Replay instructions
+                  const Align(
+                    alignment: Alignment.bottomLeft,
+                    child: IgnorePointer(
+                      child: _GlassyButton(
+                        icon: Icons.replay,
+                        iconColor: Color(0xFF70F0FF),
+                      ),
+                    ),
+                  ),
+
+                  // Bottom-right: Location (shows spinner when GPS is busy)
+                  Align(
+                    alignment: Alignment.bottomRight,
+                    child: IgnorePointer(
+                      child: _GlassyButton(
+                        icon: Icons.location_on,
+                        iconColor: const Color(0xFF70F0FF),
+                        busy: _controller.locationBusy,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -259,7 +159,6 @@ class _CameraScreenState extends State<CameraScreen> {
         if (snapshot.connectionState != ConnectionState.done) {
           return const ColoredBox(color: Color(0xFF030A20));
         }
-
         return _buildFullScreenPreview(
           CameraPreview(cam),
           cam.value.aspectRatio,
@@ -271,10 +170,6 @@ class _CameraScreenState extends State<CameraScreen> {
   Widget _buildFullScreenPreview(Widget preview, double cameraAspectRatio) {
     final screenSize = MediaQuery.sizeOf(context);
     final screenAspectRatio = screenSize.width / screenSize.height;
-
-    // CameraPreview reports landscape-oriented aspect ratios on many devices.
-    // In portrait, invert it before cover-scaling so the preview fills the
-    // screen instead of rendering as a small letterboxed rectangle.
     final portraitCameraAspectRatio = 1 / cameraAspectRatio;
     final scale = portraitCameraAspectRatio / screenAspectRatio;
 
@@ -308,7 +203,7 @@ class _CameraScreenState extends State<CameraScreen> {
             const Icon(Icons.videocam_off, color: Colors.white38, size: 52),
             const SizedBox(height: 14),
             Text(
-              _controller.cameraError ?? 'وضع تجريبي بدون كاميرا',
+              _controller.cameraError ?? '.',  // ← Arabic placeholder
               style: const TextStyle(color: Colors.white60, fontSize: 15),
               textAlign: TextAlign.center,
             ),
@@ -317,48 +212,218 @@ class _CameraScreenState extends State<CameraScreen> {
       ),
     );
   }
+
+  Widget _buildDetectionOverlay() {
+    final cam = _controller.cameraController;
+    if (cam == null || !cam.value.isInitialized) {
+      return const SizedBox.shrink();
+    }
+
+    return ValueListenableBuilder<List<Detection>>(
+      valueListenable: _controller.detectionsListenable,
+      builder: (context, detections, _) {
+        return DetectionOverlay(
+          detections: detections,
+          cameraAspectRatio: cam.value.aspectRatio,
+        );
+      },
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────
+  //  Tap layout (unchanged from original)
+  //  Top 30%   : Settings (L) + Emergency (R)
+  //  Middle 40%: Dead zone
+  //  Bottom 30%: Replay (L)   + Location (R)
+  // ───────────────────────────────────────────────────────────────────
+  Widget _buildTapLayout() {
+    return Column(
+      children: [
+        Expanded(
+          flex: 3,
+          child: Row(
+            children: [
+              Expanded(child: _tapZone(onTap: _onSettingsTap)),
+              Expanded(child: _tapZone(onTap: _controller.onEmergencyTap)),
+            ],
+          ),
+        ),
+        const Expanded(flex: 4, child: IgnorePointer(child: SizedBox.expand())),
+        Expanded(
+          flex: 3,
+          child: Row(
+            children: [
+              Expanded(
+                child: _tapZone(onTap: _controller.onReplayInstructionsTap),
+              ),
+              Expanded(child: _tapZone(onTap: _controller.onLocationTap)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _tapZone({required Function() onTap}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => onTap(),
+      child: const SizedBox.expand(),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Glassy icon badge — small frosted circular icon with cyan tint
+//  Glassy corner button — Liquid-Glass / glossy 3D style
+//
+//  Layers (bottom → top):
+//   1. Outer soft shadow for depth
+//   2. Frosted blur backdrop
+//   3. Translucent gradient body (light at top, dim at bottom)
+//   4. Top-edge bright highlight (the "gloss")
+//   5. Inner colored inner-glow at the bottom (subtle lit-from-inside feel)
+//   6. White rim border
+//   7. Icon (no label)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _GlassyIconBadge extends StatelessWidget {
-  const _GlassyIconBadge({required this.icon});
+class _GlassyButton extends StatelessWidget {
+  const _GlassyButton({
+    required this.icon,
+    required this.iconColor,
+    this.busy = false,
+  });
+
   final IconData icon;
+  final Color iconColor;
+  final bool busy;
+
+  static const double _size = 68;
+  static const double _radius = 18;
+  static const double _iconSize = 28;
 
   @override
   Widget build(BuildContext context) {
-    return ClipOval(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          width: 46,
-          height: 46,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withOpacity(0.22),
-                const Color(0xFF40E0FF).withOpacity(0.10),
+    return SizedBox(
+      width: _size,
+      height: _size,
+      child: Stack(
+        children: [
+          // Outer drop shadow for lift
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(_radius),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.30),
+                  blurRadius: 16,
+                  spreadRadius: -2,
+                  offset: const Offset(0, 6),
+                ),
+                BoxShadow(
+                  color: iconColor.withOpacity(0.18),
+                  blurRadius: 18,
+                  spreadRadius: -4,
+                ),
               ],
             ),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.32),
-              width: 1.0,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF1855FF).withOpacity(0.18),
-                blurRadius: 12,
-                spreadRadius: 1,
-              ),
-            ],
           ),
-          child: Icon(icon, color: Colors.white, size: 22),
-        ),
+
+          // Frosted glass body + gradient + highlight + inner glow + rim
+          ClipRRect(
+            borderRadius: BorderRadius.circular(_radius),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(_radius),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white.withOpacity(0.28),
+                      Colors.white.withOpacity(0.10),
+                      Colors.white.withOpacity(0.06),
+                    ],
+                    stops: const [0.0, 0.45, 1.0],
+                  ),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.32),
+                    width: 1.0,
+                  ),
+                ),
+                child: Stack(
+                  children: [
+                    // Top-edge bright gloss highlight
+                    Positioned(
+                      top: 1,
+                      left: 1,
+                      right: 1,
+                      height: _size * 0.45,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(_radius - 2),
+                            topRight: Radius.circular(_radius - 2),
+                          ),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.white.withOpacity(0.40),
+                              Colors.white.withOpacity(0.0),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // Inner colored glow at the bottom — "lit from inside"
+                    Positioned(
+                      bottom: -10,
+                      left: _size * 0.15,
+                      right: _size * 0.15,
+                      height: _size * 0.45,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            colors: [
+                              iconColor.withOpacity(0.30),
+                              iconColor.withOpacity(0.0),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // Icon
+                    Center(
+                      child: busy
+                          ? SizedBox(
+                              width: _iconSize,
+                              height: _iconSize,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.4,
+                                color: iconColor,
+                              ),
+                            )
+                          : Icon(
+                              icon,
+                              color: iconColor,
+                              size: _iconSize,
+                              shadows: [
+                                Shadow(
+                                  color: iconColor.withOpacity(0.55),
+                                  blurRadius: 10,
+                                ),
+                              ],
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

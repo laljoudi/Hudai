@@ -10,7 +10,7 @@ import 'package:gp_hudai/core/storage/prefs.dart';
 /// Audio file paths used by the setup screen.
 /// Note: audioplayers uses paths WITHOUT the 'assets/' prefix.
 class _SetupAudio {
-  static const String intro          = 'audio/setup/setup_intro..mp3';
+  static const String intro          = 'audio/setup/setup_intro.mp3';
   static const String startListening = 'audio/setup/start_listening.mp3';
   static const String confirmNumber  = 'audio/setup/confirm_number.mp3';
   static const String afterConfirm   = 'audio/setup/after_confirm_options.mp3';

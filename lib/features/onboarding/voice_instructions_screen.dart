@@ -93,7 +93,7 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Background gradient — NEW: linear, top-to-bottom
+            // Background gradient — linear, top-to-bottom
             const Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -131,9 +131,9 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
                         alignment: Alignment.center,
                         children: [
 
-                          // Outer glow bloom — NEW: cyan halo
+                          // Outer glow bloom — subtle cyan halo
                           Opacity(
-                            opacity: _glowAnim.value,
+                            opacity: _glowAnim.value * 0.18,
                             child: Container(
                               width:  orbDiameter + 80,
                               height: orbDiameter + 80,
@@ -141,21 +141,21 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
-                                    color:        Color(0x6670F0FF), // cyan ~40%
-                                    blurRadius:   90,
-                                    spreadRadius: 20,
+                                    color:        Color(0x0D70F0FF), // cyan ~5%
+                                    blurRadius:   80,
+                                    spreadRadius: 8,
                                   ),
                                   BoxShadow(
-                                    color:        Color(0x3370F0FF), // cyan ~20%
-                                    blurRadius:   130,
-                                    spreadRadius: 35,
+                                    color:        Color(0x0670F0FF), // cyan ~2%
+                                    blurRadius:   120,
+                                    spreadRadius: 16,
                                   ),
                                 ],
                               ),
                             ),
                           ),
 
-                          // Arc 1 — NEW color: #70F0FF
+                          // Arc 1 — #70F0FF
                           Transform.rotate(
                             angle: _arc1Ctrl.value * 2 * math.pi,
                             child: CustomPaint(
@@ -170,7 +170,7 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
                             ),
                           ),
 
-                          // Arc 2 — already #70F0FF, kept as-is
+                          // Arc 2 — #70F0FF
                           Transform.rotate(
                             angle: -_arc2Ctrl.value * 2 * math.pi,
                             child: CustomPaint(
@@ -185,7 +185,7 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
                             ),
                           ),
 
-                          // The blue glassy orb (now with extra highlights inside)
+                          // The blue glassy orb
                           _GlassOrb(diameter: orbDiameter),
                         ],
                       ),
@@ -269,26 +269,7 @@ class _GlassOrb extends StatelessWidget {
               ),
             ),
 
-            // NEW: Top-left specular highlight (soft glass shine)
-            Positioned(
-              top:  diameter * 0.12,
-              left: diameter * 0.18,
-              child: Container(
-                width:  diameter * 0.38,
-                height: diameter * 0.22,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(diameter),
-                  gradient: RadialGradient(
-                    colors: [
-                      Colors.white.withOpacity(0.55),
-                      Colors.white.withOpacity(0.0),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // NEW: Small sharper highlight dot
+            // Small sharp highlight dot (top-left)
             Positioned(
               top:  diameter * 0.18,
               left: diameter * 0.26,
@@ -297,7 +278,7 @@ class _GlassOrb extends StatelessWidget {
                 height: diameter * 0.06,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(diameter),
-                  color: Colors.white.withOpacity(0.35),
+                  color: Colors.white.withOpacity(0.55),
                 ),
               ),
             ),

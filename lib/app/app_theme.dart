@@ -22,11 +22,11 @@ class AppTheme {
         bodyColor: Colors.black,
         displayColor: Colors.black,
       ),
-    appBarTheme: const AppBarTheme(
-  backgroundColor: Colors.white,
-  foregroundColor: Colors.black,
-  elevation: 0,
-),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
+      ),
       iconTheme: const IconThemeData(color: Colors.black),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -36,10 +36,7 @@ class AppTheme {
           shape: const StadiumBorder(),
         ),
       ),
-        bottomAppBarTheme: const BottomAppBarTheme(
-        // bottomAppBarTheme: const BottomAppBarThemeData(
-        //color: AppColors.footer,
-      ),
+      bottomAppBarTheme: const BottomAppBarThemeData(),
     );
   }
 }
