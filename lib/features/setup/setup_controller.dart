@@ -10,16 +10,13 @@ import 'package:gp_hudai/core/storage/prefs.dart';
 /// Audio file paths used by the setup screen.
 /// Note: audioplayers uses paths WITHOUT the 'assets/' prefix.
 class _SetupAudio {
-  static const String intro          = 'audio/setup/setup_intro.mp3';
+  static const String intro = 'audio/setup/setup_intro.mp3';
   static const String startListening = 'audio/setup/start_listening.mp3';
-  static const String confirmNumber  = 'audio/setup/confirm_number.mp3';
-  static const String afterConfirm   = 'audio/setup/after_confirm_options.mp3';
-  static const String processing     = 'audio/setup/processing_number.mp3';
-  static const String invalidVoice   = 'audio/setup/invalid_voice_input.mp3';
-  static const String manualIntro    = 'audio/setup/manual_input_intro.mp3';
-  // Final cue after the digits are read back. Voiced as:
-  //   "اضغط مطولًا للحفظ، أو اضغط مرة واحدة لإعادة المحاولة"
-  // File name kept as tap_to_save.mp3 for now; will be renamed later.
+  static const String confirmNumber = 'audio/setup/confirm_number.mp3';
+  static const String afterConfirm = 'audio/setup/after_confirm_options.mp3';
+  static const String processing = 'audio/setup/processing_number.mp3';
+  static const String invalidVoice = 'audio/setup/invalid_voice_input.mp3';
+  static const String manualIntro = 'audio/setup/manual_input_intro.mp3';
   static const String tapToSave = 'audio/setup/tap_to_save.mp3';
 
   // Digit files 0–9, played one-by-one when reading back the number.
@@ -67,47 +64,56 @@ enum SetupStage {
 /// Brain of the setup screen. The view only renders state and forwards taps.
 class SetupController extends ChangeNotifier {
   // Services
-  final AudioPlayer      _audioPlayer = AudioPlayer();
-  final stt.SpeechToText _speech      = stt.SpeechToText();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  final stt.SpeechToText _speech = stt.SpeechToText();
 
-  bool _speechAvailable    = false;
-  bool _disposed           = false;
-  bool _processed          = false;
-  bool _userStopRequested  = false;
-  int  _restartFailures    = 0;
-  String _accumulatedText  = '';
+  bool _speechAvailable = false;
+  bool _disposed = false;
+  bool _processed = false;
+  bool _userStopRequested = false;
+  int _restartFailures = 0;
+  String _accumulatedText = '';
 
   // State
-  SetupStage _stage             = SetupStage.intro;
-  String     _recognizedNumber  = '';
-  String     _heardText         = '';
-  String     _lastParsedDigits  = '';
-  bool       _shouldNavigate    = false;
+  SetupStage _stage = SetupStage.intro;
+  String _recognizedNumber = '';
+  String _heardText = '';
+  String _lastParsedDigits = '';
+  bool _shouldNavigate = false;
 
-  SetupStage get stage            => _stage;
-  String     get recognizedNumber => _recognizedNumber;
-  String     get heardText        => _heardText;
-  String     get lastParsedDigits => _lastParsedDigits;
-  bool       get shouldNavigate   => _shouldNavigate;
+  SetupStage get stage => _stage;
+  String get recognizedNumber => _recognizedNumber;
+  String get heardText => _heardText;
+  String get lastParsedDigits => _lastParsedDigits;
+  bool get shouldNavigate => _shouldNavigate;
 
-  bool get isManual    => _stage == SetupStage.manual;
+  bool get isManual => _stage == SetupStage.manual;
   bool get isListening => _stage == SetupStage.listening;
   bool get inputLocked =>
-      _stage == SetupStage.intro ||
-      _stage == SetupStage.saving;
+      _stage == SetupStage.intro || _stage == SetupStage.saving;
 
   String get statusText {
     switch (_stage) {
-      case SetupStage.intro:           return '...';
-      case SetupStage.idle:            return 'اضغط للبدء بالتحدث';
-      case SetupStage.startingListen:  return 'استعد للتحدث...';
-      case SetupStage.listening:       return 'اضغط عند الانتهاء';
-      case SetupStage.processing:      return 'جارٍ المعالجة...';
-      case SetupStage.invalid:         return 'لم يتم التعرف على الرقم';
-      case SetupStage.confirming:      return 'تأكيد الرقم...';
-      case SetupStage.awaitingSave:    return 'ضغطة واحدة لإعادة المحاولة، اضغط مطولًا للحفظ';
-      case SetupStage.saving:          return 'جارٍ الحفظ...';
-      case SetupStage.manual:          return '';
+      case SetupStage.intro:
+        return '...';
+      case SetupStage.idle:
+        return 'اضغط للبدء بالتحدث';
+      case SetupStage.startingListen:
+        return 'استعد للتحدث...';
+      case SetupStage.listening:
+        return 'اضغط عند الانتهاء';
+      case SetupStage.processing:
+        return 'جارٍ المعالجة...';
+      case SetupStage.invalid:
+        return 'لم يتم التعرف على الرقم';
+      case SetupStage.confirming:
+        return 'تأكيد الرقم...';
+      case SetupStage.awaitingSave:
+        return 'ضغطة واحدة لإعادة المحاولة، اضغط مطولًا للحفظ';
+      case SetupStage.saving:
+        return 'جارٍ الحفظ...';
+      case SetupStage.manual:
+        return '';
     }
   }
 
@@ -169,7 +175,9 @@ class SetupController extends ChangeNotifier {
     if (_stage == SetupStage.listening) {
       debugPrint('🛑 user requested stop');
       _userStopRequested = true;
-      try { await _speech.stop(); } catch (_) {}
+      try {
+        await _speech.stop();
+      } catch (_) {}
       return;
     }
 
@@ -257,7 +265,7 @@ class SetupController extends ChangeNotifier {
     if (!_speechAvailable) {
       _speechAvailable = await _speech.initialize(
         onStatus: _onSpeechStatus,
-        onError:  _onSpeechError,
+        onError: _onSpeechError,
       );
     }
     if (!_speechAvailable) {
@@ -268,12 +276,12 @@ class SetupController extends ChangeNotifier {
 
     // 4. Start listening
     _setStage(SetupStage.listening);
-    _recognizedNumber  = '';
-    _heardText         = '';
-    _accumulatedText   = '';
-    _processed         = false;
+    _recognizedNumber = '';
+    _heardText = '';
+    _accumulatedText = '';
+    _processed = false;
     _userStopRequested = false;
-    _restartFailures   = 0;
+    _restartFailures = 0;
 
     await _speech.listen(
       localeId: 'ar_SA',
@@ -284,9 +292,9 @@ class SetupController extends ChangeNotifier {
       ),
       // Don't auto-stop on silence — user explicitly taps again to stop.
       // listenFor is just a safety upper bound.
-      pauseFor:  const Duration(minutes: 10),
+      pauseFor: const Duration(minutes: 10),
       listenFor: const Duration(minutes: 5),
-      onResult:  _onSpeechResult,
+      onResult: _onSpeechResult,
     );
   }
 
@@ -325,7 +333,7 @@ class SetupController extends ChangeNotifier {
   }
 
   void _onSpeechResult(dynamic result) {
-    final words   = (result.recognizedWords as String?) ?? '';
+    final words = (result.recognizedWords as String?) ?? '';
     final isFinal = (result.finalResult as bool?) ?? false;
     debugPrint('🎙️ heard: "$words" final=$isFinal');
 
@@ -352,8 +360,11 @@ class SetupController extends ChangeNotifier {
     debugPrint('🔄 restart listen (failures=$_restartFailures)');
     // Brief pause so the previous session can fully tear down.
     await Future.delayed(const Duration(milliseconds: 250));
-    if (_disposed || _userStopRequested ||
-        _stage != SetupStage.listening || _processed) return;
+    if (_disposed ||
+        _userStopRequested ||
+        _stage != SetupStage.listening ||
+        _processed)
+      return;
 
     try {
       await _speech.listen(
@@ -363,9 +374,9 @@ class SetupController extends ChangeNotifier {
           partialResults: true,
           cancelOnError: false,
         ),
-        pauseFor:  const Duration(minutes: 10),
+        pauseFor: const Duration(minutes: 10),
         listenFor: const Duration(minutes: 5),
-        onResult:  _onSpeechResult,
+        onResult: _onSpeechResult,
       );
     } catch (e) {
       debugPrint('🔄 restart failed: $e');
@@ -501,14 +512,18 @@ class SetupController extends ChangeNotifier {
   }
 
   Future<void> _cancelEverything() async {
-    _processed         = true; // prevent stray late callbacks from triggering process
+    _processed = true; // prevent stray late callbacks from triggering process
     _userStopRequested = true; // prevent stray restart attempts
-    _heardText         = '';
-    _accumulatedText   = '';
-    _restartFailures   = 0;
-    try { await _audioPlayer.stop(); } catch (_) {}
+    _heardText = '';
+    _accumulatedText = '';
+    _restartFailures = 0;
+    try {
+      await _audioPlayer.stop();
+    } catch (_) {}
     if (_speech.isListening) {
-      try { await _speech.cancel(); } catch (_) {}
+      try {
+        await _speech.cancel();
+      } catch (_) {}
     }
   }
 
@@ -571,24 +586,34 @@ String _arabicSpeechToDigits(String text) {
     'تسعة': '9', 'تسع': '9', 'تسعه': '9',
   };
 
-  final buf  = StringBuffer();
+  final buf = StringBuffer();
   final arab = RegExp(r'[؀-ۿ]');
   int i = 0;
   while (i < text.length) {
     final ch = text[i];
 
     // ASCII digit
-    if (RegExp(r'[0-9]').hasMatch(ch)) { buf.write(ch); i++; continue; }
+    if (RegExp(r'[0-9]').hasMatch(ch)) {
+      buf.write(ch);
+      i++;
+      continue;
+    }
 
     // Eastern Arabic numeral (٠–٩)
     final ei = eastern.indexOf(ch);
-    if (ei >= 0) { buf.write(ei); i++; continue; }
+    if (ei >= 0) {
+      buf.write(ei);
+      i++;
+      continue;
+    }
 
     // Arabic word — accumulate consecutive Arabic letters and look up
     if (arab.hasMatch(ch)) {
       var j = i;
-      while (j < text.length && arab.hasMatch(text[j])) { j++; }
-      final word   = text.substring(i, j);
+      while (j < text.length && arab.hasMatch(text[j])) {
+        j++;
+      }
+      final word = text.substring(i, j);
       final mapped = arabicWordToDigit[word];
       if (mapped != null) buf.write(mapped);
       i = j;
@@ -608,8 +633,10 @@ String _arabicSpeechToDigits(String text) {
 ///   "...0512345678..."  (extra noise digits around it)      → "0512345678"
 String _normalizeSaudiNumber(String d) {
   // 1. Strip Saudi country code prefixes
-  if (d.startsWith('00966')) d = '0${d.substring(5)}';
-  else if (d.startsWith('966')) d = '0${d.substring(3)}';
+  if (d.startsWith('00966'))
+    d = '0${d.substring(5)}';
+  else if (d.startsWith('966'))
+    d = '0${d.substring(3)}';
 
   // 2. Add a leading 0 if the user dropped it ("5xxxxxxxx" → "05xxxxxxxx")
   if (d.length == 9 && d.startsWith('5')) d = '0$d';
