@@ -79,22 +79,34 @@ class _SetupScreenState extends State<SetupScreen>
   ///   - Settings flow:   Camera → Settings → Setup. A Camera route is
   ///     already underneath us; pop the stack back to it so we don't
   ///     stack a second Camera instance on top (which would re-init the
-  ///     camera, reload the model, and replay the intro).
+  ///     camera, reload the model, and replay the intro). Popping
+  ///     Settings also resolves CameraScreen's awaited pushNamed and
+  ///     triggers `resumeFromSettings()` on the original CameraController.
   void _navigateToCamera() {
+    debugPrint('🧭 _navigateToCamera() called');
     final navigator = Navigator.of(context);
 
     bool cameraInStack = false;
     navigator.popUntil((route) {
+      final name = route.settings.name ?? '<unnamed>';
       if (route.settings.name == AppRoutes.camera) {
         cameraInStack = true;
+        debugPrint('🧭   → found camera at "$name", stopping pop');
         return true;
       }
-      // Stop at the bottom of the stack so we never empty the navigator.
-      return route.isFirst;
+      if (route.isFirst) {
+        debugPrint('🧭   → bottom reached at "$name", stopping pop');
+        return true;
+      }
+      debugPrint('🧭   → popping "$name"');
+      return false;
     });
 
     if (!cameraInStack) {
+      debugPrint('🧭   → no Camera in stack, pushReplacement(/camera)');
       navigator.pushReplacementNamed(AppRoutes.camera);
+    } else {
+      debugPrint('🧭   → reused existing Camera, no new instance created');
     }
   }
 
@@ -173,17 +185,16 @@ class _SetupScreenState extends State<SetupScreen>
 
             const SizedBox(height: 28),
 
-            // Loading indicator — small white dots, sits BELOW the mic.
-            // The reserved height keeps the mic from jumping when the
-            // indicator appears or disappears.
-            SizedBox(
-              height: 12,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                child: _isProcessingStage()
-                    ? const _ProcessingDots()
-                    : const SizedBox.shrink(),
-              ),
+            // Under-mic area:
+            //   - While listening with partial speech → chip showing what
+            //     was just heard, so the user (or sighted helper) can
+            //     visually verify the digits in real time.
+            //   - After parsing → chip with the formatted final number.
+            //   - Busy with nothing to show → small white loading dots.
+            //   - Otherwise → empty.
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: _buildSubMic(),
             ),
 
             const Spacer(),
@@ -193,15 +204,54 @@ class _SetupScreenState extends State<SetupScreen>
     );
   }
 
-  /// True while the controller is doing work the user must wait for:
-  /// parsing speech, validating digits, reading the number back, or
-  /// persisting. The dots animation is gated on this.
-  bool _isProcessingStage() {
+  /// Picks what to render directly under the mic:
+  ///   - `listening` with non-empty partial → live chip
+  ///   - `confirming` / `awaitingSave` / `saving` with a recognised number
+  ///     → final chip (formatted "050 017 0709")
+  ///   - `processing` / `invalid` (or saving with no number) → dots
+  ///   - otherwise → empty
+  Widget _buildSubMic() {
     final stage = _controller.stage;
-    return stage == SetupStage.processing ||
+    final heard = _controller.heardText;
+    final recognized = _controller.recognizedNumber;
+
+    if (stage == SetupStage.listening && heard.isNotEmpty) {
+      return _NumberChip(
+        key: const ValueKey('chip-live'),
+        text: heard,
+        isFinal: false,
+      );
+    }
+
+    final hasFinal = recognized.isNotEmpty &&
+        (stage == SetupStage.confirming ||
+            stage == SetupStage.awaitingSave ||
+            stage == SetupStage.saving);
+    if (hasFinal) {
+      return _NumberChip(
+        key: const ValueKey('chip-final'),
+        text: _formatSaudiNumber(recognized),
+        isFinal: true,
+      );
+    }
+
+    final isBusy = stage == SetupStage.processing ||
         stage == SetupStage.invalid ||
-        stage == SetupStage.confirming ||
         stage == SetupStage.saving;
+    if (isBusy) {
+      return const _ProcessingDots(key: ValueKey('dots'));
+    }
+
+    return const SizedBox.shrink(key: ValueKey('empty'));
+  }
+
+  /// Formats a 10-digit Saudi mobile number as "050 017 0709".
+  /// Falls back to the raw input if it isn't exactly 10 digits.
+  static String _formatSaudiNumber(String digits) {
+    if (digits.length != 10) return digits;
+    return '${digits.substring(0, 3)} '
+        '${digits.substring(3, 6)} '
+        '${digits.substring(6)}';
   }
 
   // ───────────────────────────────────────────────────────────────────
@@ -339,12 +389,52 @@ class _MicOrb extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Processing dots — shown during processing / invalid / confirming / saving
-//  in voice mode. Loop is . → .. → ... → repeat.
+//  Number chip — glassy rounded box that shows either the partial speech
+//  text (while listening) or the final formatted number (after parsing).
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _NumberChip extends StatelessWidget {
+  const _NumberChip({
+    super.key,
+    required this.text,
+    required this.isFinal,
+  });
+
+  final String text;
+  final bool isFinal;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.22)),
+      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+        style: TextStyle(
+          color: isFinal ? Colors.white : Colors.white.withOpacity(0.85),
+          fontSize: isFinal ? 24 : 18,
+          fontWeight: FontWeight.w700,
+          letterSpacing: isFinal ? 2.0 : 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Processing dots — shown while the system is busy and there is nothing
+//  meaningful to display in the chip (e.g. processing/invalid).
+//  Loop is . → .. → ... → repeat.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ProcessingDots extends StatefulWidget {
-  const _ProcessingDots();
+  const _ProcessingDots({super.key});
 
   @override
   State<_ProcessingDots> createState() => _ProcessingDotsState();
