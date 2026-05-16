@@ -13,10 +13,12 @@ class _SetupAudio {
   static const String intro = 'audio/setup/setup_intro.mp3';
   static const String startListening = 'audio/setup/start_listening.mp3';
   static const String confirmNumber = 'audio/setup/confirm_number.mp3';
-  static const String afterConfirm = 'audio/setup/after_confirm_options.mp3';
   static const String processing = 'audio/setup/processing_number.mp3';
   static const String invalidVoice = 'audio/setup/invalid_voice_input.mp3';
   static const String manualIntro = 'audio/setup/manual_input_intro.mp3';
+  // Final cue after the digits are read back. Voiced as:
+  //   "اضغط مطولًا للحفظ، أو اضغط مرة واحدة لإعادة المحاولة"
+  // File name kept as tap_to_save.mp3 for now; will be renamed later.
   static const String tapToSave = 'audio/setup/tap_to_save.mp3';
 
   // Digit files 0–9, played one-by-one when reading back the number.
@@ -43,7 +45,7 @@ class _SetupAudio {
 ///   listening       — microphone is open, capturing speech
 ///   processing      — processing_number is playing + parsing digits
 ///   invalid         — invalid_voice_input is playing
-///   confirming      — confirm_number → digits → after_confirm_options → tap_to_save
+///   confirming      — confirm_number → digits → tap_to_save
 ///   awaitingSave    — tap_to_save finished; waiting for user gesture
 ///                       (single tap → retry voice; long press → save + go)
 ///   saving          — persisting to Prefs (after a valid voice input)
@@ -92,30 +94,6 @@ class SetupController extends ChangeNotifier {
   bool get inputLocked =>
       _stage == SetupStage.intro || _stage == SetupStage.saving;
 
-  String get statusText {
-    switch (_stage) {
-      case SetupStage.intro:
-        return '...';
-      case SetupStage.idle:
-        return 'اضغط للبدء بالتحدث';
-      case SetupStage.startingListen:
-        return 'استعد للتحدث...';
-      case SetupStage.listening:
-        return 'اضغط عند الانتهاء';
-      case SetupStage.processing:
-        return 'جارٍ المعالجة...';
-      case SetupStage.invalid:
-        return 'لم يتم التعرف على الرقم';
-      case SetupStage.confirming:
-        return 'تأكيد الرقم...';
-      case SetupStage.awaitingSave:
-        return 'ضغطة واحدة لإعادة المحاولة، اضغط مطولًا للحفظ';
-      case SetupStage.saving:
-        return 'جارٍ الحفظ...';
-      case SetupStage.manual:
-        return '';
-    }
-  }
 
   // ──────────────────────────────────────────────────────────────────
   // Lifecycle
@@ -424,8 +402,9 @@ class SetupController extends ChangeNotifier {
       if (_disposed || _stage != SetupStage.confirming) return;
     }
 
-    await _playAndWait(_SetupAudio.afterConfirm);
-    if (_disposed || _stage != SetupStage.confirming) return;
+    // (No "after confirm options" clip — the tap_to_save audio below
+    // already tells the user what to do next: long-press to save, or
+    // single-tap to retry.)
 
     // Final cue once the digits are recognized + confirmed on screen.
     await _playAndWait(_SetupAudio.tapToSave);
