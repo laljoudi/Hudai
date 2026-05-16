@@ -10,8 +10,8 @@ import 'package:gp_hudai/features/setup/setup_controller.dart';
 /// Interaction rules:
 ///   - Single tap → start voice flow (or stop mic if listening, or retry
 ///     when in awaitingSave)
-///   - Double tap → switch to manual (silent) mode (or save+navigate when
-///     in awaitingSave)
+///   - Double tap → switch to manual (silent) keyboard mode
+///   - Long press → save + navigate (only meaningful in awaitingSave)
 ///   - Taps are ignored while the intro audio is playing
 class SetupScreen extends StatefulWidget {
   const SetupScreen({super.key});
@@ -104,6 +104,7 @@ class _SetupScreenState extends State<SetupScreen>
       behavior: HitTestBehavior.opaque,
       onTap: _controller.onSingleTap,
       onDoubleTap: _controller.onDoubleTap,
+      onLongPress: _controller.onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 28),
         child: Column(
