@@ -54,7 +54,7 @@ class _SetupScreenState extends State<SetupScreen>
 
     if (_controller.shouldNavigate) {
       _controller.clearNavigationFlag();
-      Navigator.pushReplacementNamed(context, AppRoutes.camera);
+      _navigateToCamera();
       return;
     }
 
@@ -68,7 +68,34 @@ class _SetupScreenState extends State<SetupScreen>
     if (!_formKey.currentState!.validate()) return;
     final ok = await _controller.saveManualNumber(_emergencyController.text);
     if (!mounted || !ok) return;
-    Navigator.pushReplacementNamed(context, AppRoutes.camera);
+    _navigateToCamera();
+  }
+
+  /// Returns the user to the Camera screen after a successful save.
+  ///
+  /// Two entry paths reach this code:
+  ///   - First-time flow: Splash → VoiceInstructions → Setup. No Camera
+  ///     route exists yet, so we push-replace into one.
+  ///   - Settings flow:   Camera → Settings → Setup. A Camera route is
+  ///     already underneath us; pop the stack back to it so we don't
+  ///     stack a second Camera instance on top (which would re-init the
+  ///     camera, reload the model, and replay the intro).
+  void _navigateToCamera() {
+    final navigator = Navigator.of(context);
+
+    bool cameraInStack = false;
+    navigator.popUntil((route) {
+      if (route.settings.name == AppRoutes.camera) {
+        cameraInStack = true;
+        return true;
+      }
+      // Stop at the bottom of the stack so we never empty the navigator.
+      return route.isFirst;
+    });
+
+    if (!cameraInStack) {
+      navigator.pushReplacementNamed(AppRoutes.camera);
+    }
   }
 
   // ───────────────────────────────────────────────────────────────────
@@ -96,7 +123,9 @@ class _SetupScreenState extends State<SetupScreen>
   }
 
   // ───────────────────────────────────────────────────────────────────
-  // Voice mode — full-screen tap zone
+  // Voice mode — audio-first. Only the page title and a single central
+  // visual (mic orb OR three-dot loader) are rendered. All instructions
+  // are delivered by the audio cues.
   // ───────────────────────────────────────────────────────────────────
   Widget _buildVoiceMode() {
     return GestureDetector(
@@ -119,100 +148,48 @@ class _SetupScreenState extends State<SetupScreen>
                 fontFamily: 'IBMPlexSansArabic',
                 fontWeight: FontWeight.w400,
                 fontSize: 32,
-                // fontWeight: FontWeight.w700,
                 letterSpacing: -0.5,
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            Text(
-              'اضغط ضغطة واحدة لبدء التحدث، وضغطة اخرى للايقاف. ضغطتين للإدخال اليدوي',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.55),
-                fontFamily: 'IBMPlexSansArabic',
-                fontWeight: FontWeight.w300,
-                fontSize: 14,
-                height: 1.5,
               ),
             ),
 
             const Spacer(),
 
-            AnimatedBuilder(
-              animation: _pulse,
-              builder: (_, __) {
-                final t = _controller.isListening ? _pulse.value : 0.0;
-                return _MicOrb(
-                  pulse: t,
-                  listening: _controller.isListening,
-                  dim: _controller.stage == SetupStage.intro,
-                );
-              },
-            ),
-
-            const SizedBox(height: 32),
-
-            Text(
-              _controller.statusText,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-
-            const SizedBox(height: 18),
-
-            // Live recognition feedback:
-            //   - while listening → show raw heard text
-            //   - confirming/awaitingSave/saving → show the parsed digits
-            Builder(
-              builder: (_) {
-                final showLive =
-                    _controller.stage == SetupStage.listening &&
-                    _controller.heardText.isNotEmpty;
-                final showFinal =
-                    _controller.recognizedNumber.isNotEmpty &&
-                    (_controller.stage == SetupStage.confirming ||
-                        _controller.stage == SetupStage.awaitingSave ||
-                        _controller.stage == SetupStage.saving);
-                if (!showLive && !showFinal) return const SizedBox.shrink();
-
-                return Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white.withOpacity(0.20)),
-                  ),
-                  child: Text(
-                    showFinal
-                        ? _controller.recognizedNumber
-                        : _controller.heardText,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: showFinal
-                          ? const Color(0xFF40E0FF)
-                          : Colors.white.withOpacity(0.85),
-                      fontSize: showFinal ? 22 : 18,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: showFinal ? 2.5 : 0.5,
-                    ),
-                  ),
-                );
-              },
-            ),
+            _buildVoiceCenter(),
 
             const Spacer(),
           ],
         ),
       ),
+    );
+  }
+
+  /// The single central visual for voice mode.
+  ///
+  ///   - Busy stages (processing / invalid / confirming / saving): three
+  ///     animated dots, no text.
+  ///   - All other stages: the mic orb, with its pulse driven by the
+  ///     listening state.
+  Widget _buildVoiceCenter() {
+    final stage = _controller.stage;
+    final isBusy = stage == SetupStage.processing ||
+        stage == SetupStage.invalid ||
+        stage == SetupStage.confirming ||
+        stage == SetupStage.saving;
+
+    if (isBusy) {
+      return const _ProcessingDots();
+    }
+
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (_, __) {
+        final t = _controller.isListening ? _pulse.value : 0.0;
+        return _MicOrb(
+          pulse: t,
+          listening: _controller.isListening,
+          dim: stage == SetupStage.intro,
+        );
+      },
     );
   }
 
@@ -367,6 +344,78 @@ class _MicOrb extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Processing dots — shown during processing / invalid / confirming / saving
+//  in voice mode. Loop is . → .. → ... → repeat.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ProcessingDots extends StatefulWidget {
+  const _ProcessingDots();
+
+  @override
+  State<_ProcessingDots> createState() => _ProcessingDotsState();
+}
+
+class _ProcessingDotsState extends State<_ProcessingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) {
+        final step = (_ctrl.value * 3).floor().clamp(0, 2);
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (i) {
+            final on = i <= step;
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 9),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOut,
+                width: 18,
+                height: 18,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: on
+                      ? const Color(0xFF40E0FF)
+                      : Colors.white.withOpacity(0.15),
+                  boxShadow: on
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFF40E0FF).withOpacity(0.55),
+                            blurRadius: 14,
+                            spreadRadius: 1,
+                          ),
+                        ]
+                      : null,
+                ),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 }
