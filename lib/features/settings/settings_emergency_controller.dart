@@ -130,6 +130,22 @@ class SettingsEmergencyController extends ChangeNotifier {
       debugPrint('🛑 SE user requested stop');
       _userStopRequested = true;
       try { await _speech.stop(); } catch (_) {}
+
+      // ⚠️ DO NOT rely on the onStatus callback to trigger _process.
+      // The speech_to_text plugin uses a singleton native engine, and
+      // onStatus/onError callbacks are bound on the FIRST initialize().
+      // If a Setup-flow controller ran earlier and got disposed, its
+      // (now-dead) callback receives the `done` event instead of ours.
+      // To survive that, we process directly here.
+      //
+      // Wait briefly for the final partial result to bank, then process.
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (!_processed &&
+          !_disposed &&
+          _stage == SettingsEmergencyStage.listening) {
+        debugPrint('🛑 SE forcing _process directly (callback bypass)');
+        await _process(_accumulatedText);
+      }
       return;
     }
 
@@ -144,13 +160,41 @@ class SettingsEmergencyController extends ChangeNotifier {
     await _runVoiceFlow();
   }
 
+  /// Long-press: save the recognised number.
+  ///
+  /// Accepts ANY stage as long as we have a valid 10-digit Saudi number
+  /// available (either freshly recognised or last-parsed). This means
+  /// the user can save:
+  ///   - in `awaitingSave` (normal, after the tap_to_save cue),
+  ///   - or earlier — during `confirming` / `processing` — if they
+  ///     don't want to wait for the audio playback to finish,
+  ///   - or even if an audio clip hangs and the stage gets stuck.
+  ///
+  /// The ONLY thing that blocks a save is "we don't have a valid number
+  /// yet" (still listening, or recognition produced garbage).
   Future<void> onLongPress() async {
-    if (_stage != SettingsEmergencyStage.awaitingSave) {
-      debugPrint('👆⏱ SE onLongPress ignored (stage=$_stage)');
+    debugPrint(
+      '👆⏱ SE onLongPress (stage=$_stage, '
+      'recognized="$_recognizedNumber", '
+      'lastParsed="$_lastParsedDigits")',
+    );
+
+    // Pick the best valid number we have.
+    String? digits;
+    if (_isValidNumber(_recognizedNumber)) {
+      digits = _recognizedNumber;
+    } else if (_isValidNumber(_lastParsedDigits)) {
+      digits = _lastParsedDigits;
+    }
+
+    if (digits == null) {
+      debugPrint('👆⏱ SE onLongPress ignored — no valid digits yet');
       return;
     }
-    debugPrint('💾 SE awaitingSave → save + navigate (long press)');
-    await _saveAndNavigate(_recognizedNumber);
+
+    debugPrint('💾 SE long-press → save + navigate (digits="$digits")');
+    await _cancelEverything();
+    await _saveAndNavigate(digits);
   }
 
   Future<void> onDoubleTap() async {
@@ -316,15 +360,25 @@ class SettingsEmergencyController extends ChangeNotifier {
     _lastParsedDigits = digits;
     debugPrint('🎙️ SE parsed: "$digits" (len=${digits.length})');
 
+    // Validate FIRST and expose the recognised number BEFORE playing any
+    // audio. This way, onLongPress can save the number even if a later
+    // audio clip hangs (audio focus, missing asset, etc.) and the stage
+    // gets stuck in processing/confirming.
+    final valid = _isValidNumber(digits);
+    if (valid) {
+      _recognizedNumber = digits;
+      notifyListeners();
+    }
+
     await _playAndWait(_Audio.processing);
     if (_disposed || _stage != SettingsEmergencyStage.processing) return;
 
-    if (!_isValidNumber(digits)) {
+    if (!valid) {
+      _recognizedNumber = '';
       await _handleInvalid();
       return;
     }
 
-    _recognizedNumber = digits;
     _setStage(SettingsEmergencyStage.confirming);
 
     await _playAndWait(_Audio.confirmNumber);
@@ -344,28 +398,41 @@ class SettingsEmergencyController extends ChangeNotifier {
   }
 
   Future<void> _saveAndNavigate(String digits) async {
-    if (_stage == SettingsEmergencyStage.saving) return;
+    debugPrint('💾 SE _saveAndNavigate("$digits") [stage=$_stage]');
+
     if (!_isValidNumber(digits)) {
-      debugPrint('🚨 SE _saveAndNavigate: invalid number "$digits"');
-      await _handleInvalid();
+      debugPrint('🚨 SE _saveAndNavigate: invalid number, aborting');
+      return;
+    }
+
+    // Force into the saving stage even if onLongPress came in early
+    // (during processing/confirming). This guarantees the UI shows the
+    // saving state and that we don't double-save.
+    if (_stage == SettingsEmergencyStage.saving) {
+      debugPrint('💾 SE already saving, ignoring duplicate trigger');
       return;
     }
     _setStage(SettingsEmergencyStage.saving);
+
     try {
       debugPrint('💾 SE Prefs.saveEmergencyNumber("$digits") …');
       await Prefs.saveEmergencyNumber(digits);
       debugPrint('💾 SE   → saved OK');
-      if (_disposed) {
-        debugPrint('💾 SE   → controller disposed mid-save');
-        return;
-      }
-      _shouldNavigate = true;
-      debugPrint('💾 SE   → _shouldNavigate=true, notifying listeners');
-      notifyListeners();
     } catch (e) {
-      debugPrint('🚨 SE save failed: $e');
-      _setStage(SettingsEmergencyStage.awaitingSave);
+      debugPrint('🚨 SE Prefs.saveEmergencyNumber failed: $e');
+      // Still proceed to navigate — the user will see the old number on
+      // the next emergency call. Better than getting stranded on this
+      // screen with no save.
     }
+
+    if (_disposed) {
+      debugPrint('💾 SE controller disposed mid-save, not notifying');
+      return;
+    }
+
+    _shouldNavigate = true;
+    debugPrint('💾 SE _shouldNavigate=true → notifying listeners');
+    notifyListeners();
   }
 
   // ──────────────────────────────────────────────────────────────────
