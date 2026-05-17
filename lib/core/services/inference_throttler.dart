@@ -20,14 +20,27 @@ class InferenceThrottler {
   /// True while the AI is currently processing a frame.
   /// We don't accept new frames while busy.
   bool _isBusy = false;
+  int? _overrideIntervalMs;
 
   /// How many milliseconds to wait between frames.
   /// Read from YoloConfig — currently 333ms (3 FPS).
   int get _intervalMs {
+    final custom = _overrideIntervalMs;
+    if (custom != null) return custom;
+
     // iOS: use a slightly slower inference cadence to keep preview fluid
     // on real devices during long sessions.
-    if (Platform.isIOS) return 1100; // ~0.9 FPS
+    if (Platform.isIOS) return 650; // ~1.5 FPS default
     return YoloConfig.throttleMs;
+  }
+
+  /// Runtime tuning hook (used by motion-aware camera logic).
+  void setOverrideIntervalMs(int? ms) {
+    if (ms == null) {
+      _overrideIntervalMs = null;
+      return;
+    }
+    _overrideIntervalMs = ms.clamp(250, 1600);
   }
 
   /// Returns true if this frame should be processed.
@@ -62,6 +75,7 @@ class InferenceThrottler {
   void reset() {
     _lastAcceptedMs = 0;
     _isBusy = false;
+    _overrideIntervalMs = null;
   }
 
   /// Read-only access for debugging.

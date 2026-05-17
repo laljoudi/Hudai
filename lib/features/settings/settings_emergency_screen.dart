@@ -135,6 +135,7 @@ class _SettingsEmergencyScreenState extends State<SettingsEmergencyScreen>
         padding: const EdgeInsets.symmetric(horizontal: 28),
         child: Column(
           children: [
+<<<<<<< HEAD
             const SizedBox(height: 70),
             const Text(
               'رقم الطوارئ',
@@ -147,6 +148,10 @@ class _SettingsEmergencyScreenState extends State<SettingsEmergencyScreen>
                 letterSpacing: -0.5,
               ),
             ),
+=======
+            const SizedBox(height: 18),
+            const _AppName(),
+>>>>>>> 654d437 (Camera + Integration improvements)
             const Spacer(),
             AnimatedBuilder(
               animation: _pulse,
@@ -218,6 +223,7 @@ class _SettingsEmergencyScreenState extends State<SettingsEmergencyScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+<<<<<<< HEAD
             const SizedBox(height: 70),
             const Text(
               'رقم الطوارئ',
@@ -230,6 +236,11 @@ class _SettingsEmergencyScreenState extends State<SettingsEmergencyScreen>
               ),
             ),
             const SizedBox(height: 12),
+=======
+            const SizedBox(height: 18),
+            const _AppName(),
+            const SizedBox(height: 28),
+>>>>>>> 654d437 (Camera + Integration improvements)
             Text(
               'يرجى إدخال رقم هاتف يدويًا.',
               textAlign: TextAlign.center,
@@ -283,6 +294,28 @@ class _Background extends StatelessWidget {
   }
 }
 
+<<<<<<< HEAD
+=======
+class _AppName extends StatelessWidget {
+  const _AppName();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'هُــــــداي',
+      textDirection: TextDirection.rtl,
+      textAlign: TextAlign.center,
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            fontSize: 17,
+            color: Colors.white.withOpacity(0.45),
+            fontWeight: FontWeight.w400,
+            height: 1.0,
+          ),
+    );
+  }
+}
+
+>>>>>>> 654d437 (Camera + Integration improvements)
 class _MicOrb extends StatelessWidget {
   const _MicOrb({required this.pulse, required this.listening});
   final double pulse;

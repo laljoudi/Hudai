@@ -152,19 +152,8 @@ class _SetupScreenState extends State<SetupScreen>
         padding: const EdgeInsets.symmetric(horizontal: 28),
         child: Column(
           children: [
-            const SizedBox(height: 70),
-
-            const Text(
-              'رقم الطوارئ',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontFamily: 'IBMPlexSansArabic',
-                fontWeight: FontWeight.w400,
-                fontSize: 32,
-                letterSpacing: -0.5,
-              ),
-            ),
+            const SizedBox(height: 18),
+            const _AppName(),
 
             const Spacer(),
 
@@ -266,23 +255,12 @@ class _SetupScreenState extends State<SetupScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SizedBox(height: 70),
-
-            const Text(
-              'رقم الطوارئ',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 32,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.5,
-              ),
-            ),
-
-            const SizedBox(height: 12),
+            const SizedBox(height: 18),
+            const _AppName(),
+            const SizedBox(height: 28),
 
             Text(
-              'يرجى إدخال رقم هاتف يدويًا.',
+              'يرجى إدخال رقم هاتف يدويًا',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white.withOpacity(0.55),
@@ -335,6 +313,25 @@ class _Background extends StatelessWidget {
           stops: [0.0, 0.50, 0.75, 1.0],
         ),
       ),
+    );
+  }
+}
+
+class _AppName extends StatelessWidget {
+  const _AppName();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'هُــــــداي',
+      textDirection: TextDirection.rtl,
+      textAlign: TextAlign.center,
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            fontSize: 17,
+            color: Colors.white.withOpacity(0.45),
+            fontWeight: FontWeight.w400,
+            height: 1.0,
+          ),
     );
   }
 }

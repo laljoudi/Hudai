@@ -1,6 +1,7 @@
 import 'package:camera/camera.dart' as cam;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:gp_hudai/core/constants/location_constants.dart';
@@ -76,9 +77,13 @@ class CameraController extends ChangeNotifier {
   String? _cameraError;
   bool _locationBusy = false;
   bool _systemAudioBusy = false;
-  String? _lastSystemAudioPath;
   bool _cameraStarting = false;
   bool _processingEnabled = true;
+  int _blockedFrameStreak = 0;
+  Timer? _coverageRefreshTimer;
+  bool? _insideArafatZone;
+  double? _previousMotionLuma;
+  int _motionFastStreak = 0;
 
   bool get useMockCamera => _useMockCamera;
   String? get cameraError => _cameraError;
@@ -106,6 +111,7 @@ class CameraController extends ChangeNotifier {
     // Step 4: Start frame stream only after intro + model loading.
     debugPrint('🎬 Intro done + model loaded → starting AI pipeline');
     await _startFrameStream();
+    _startCoverageRefreshLoop();
   }
 
   @override
@@ -121,6 +127,7 @@ class CameraController extends ChangeNotifier {
     _audioService.dispose();
     _detectionsNotifier.dispose();
     _cameraController?.dispose();
+    _coverageRefreshTimer?.cancel();
     super.dispose();
   }
 
@@ -212,6 +219,8 @@ class CameraController extends ChangeNotifier {
   Future<void> _onCameraFrame(cam.CameraImage image) async {
     if (!_processingEnabled) return;
 
+    _updateAdaptiveThrottle(image);
+
     // 1. Throttle — drop most frames, keep ~3 per second
     if (!_throttler.shouldProcess()) return;
 
@@ -224,6 +233,21 @@ class CameraController extends ChangeNotifier {
     final newCount = _state.framesProcessed + 1;
 
     try {
+      // 3. Quick camera-health guard (blocked lens / totally dark frame).
+      final blocked = _isLikelyLensBlocked(image);
+      if (blocked) {
+        _blockedFrameStreak++;
+      } else {
+        _blockedFrameStreak = 0;
+      }
+      if (_blockedFrameStreak >= 4) {
+        if (!_systemAudioBusy) {
+          _sceneService.processCameraIssue();
+        }
+        _throttler.markDone();
+        return;
+      }
+
       // 3. Preprocess: YUV/BGRA → 640×640 RGB float
       final input = _preprocessor.processFrame(image);
       if (input == null) {
@@ -242,7 +266,7 @@ class CameraController extends ChangeNotifier {
         return;
       }
       // 6. Run inference
-      _yoloService.interpreter!.run(reshapedInput, output);
+      await _yoloService.run(reshapedInput, output);
 
       // 7. Flatten output for the decoder
       int outIdx = 0;
@@ -276,7 +300,7 @@ class CameraController extends ChangeNotifier {
       _detectionsNotifier.value = List<Detection>.unmodifiable(detections);
 
       // Log occasionally so we know it's alive
-      if (newCount % 3 == 0) {
+      if (newCount % 10 == 0) {
         debugPrint('🎯 Frame $newCount → ${detections.length} detection(s)');
       }
     } catch (e) {
@@ -285,6 +309,115 @@ class CameraController extends ChangeNotifier {
       // ALWAYS mark throttler done, even on error
       _throttler.markDone();
     }
+  }
+
+  bool _isLikelyLensBlocked(cam.CameraImage image) {
+    final stats = _sampleLumaStats(image);
+    if (stats == null) return false;
+
+    final mean = stats.mean;
+    final variance = stats.variance;
+    final darkRatio = stats.darkRatio;
+    final brightRatio = stats.brightRatio;
+
+    final mostlyDark = darkRatio > 0.82 && mean < 55;
+    final mostlyBright = brightRatio > 0.85 && mean > 220;
+    final flatAndDim = variance < 22 && mean < 80;
+    final flatAndBright = variance < 22 && mean > 190;
+
+    return mostlyDark || mostlyBright || flatAndDim || flatAndBright;
+  }
+
+  void _updateAdaptiveThrottle(cam.CameraImage image) {
+    final stats = _sampleLumaStats(image);
+    if (stats == null) return;
+
+    final prev = _previousMotionLuma;
+    _previousMotionLuma = stats.mean;
+    if (prev == null) return;
+
+    final delta = (stats.mean - prev).abs();
+    final isFast = delta >= 9.0;
+
+    if (isFast) {
+      _motionFastStreak = (_motionFastStreak + 1).clamp(0, 10);
+    } else {
+      _motionFastStreak = (_motionFastStreak - 1).clamp(0, 10);
+    }
+
+    final keepPreviewFluid = _motionFastStreak >= 2;
+    if (Platform.isIOS) {
+      _throttler.setOverrideIntervalMs(keepPreviewFluid ? 1000 : 600);
+    } else {
+      _throttler.setOverrideIntervalMs(keepPreviewFluid ? 700 : 350);
+    }
+  }
+
+  _LumaStats? _sampleLumaStats(cam.CameraImage image) {
+    if (image.planes.isEmpty) return null;
+    final width = image.width;
+    final height = image.height;
+    if (width <= 0 || height <= 0) return null;
+
+    final stepY = (height / 18).clamp(4, 26).toInt();
+    final stepX = (width / 18).clamp(4, 26).toInt();
+
+    double sum = 0;
+    double sumSq = 0;
+    int dark = 0;
+    int bright = 0;
+    int n = 0;
+
+    if (image.format.group == cam.ImageFormatGroup.bgra8888) {
+      final p = image.planes[0];
+      final bytes = p.bytes;
+      final rowStride = p.bytesPerRow;
+      for (int y = 0; y < height; y += stepY) {
+        final rowBase = y * rowStride;
+        for (int x = 0; x < width; x += stepX) {
+          final idx = rowBase + (x * 4);
+          if (idx + 2 >= bytes.length) continue;
+          final b = bytes[idx];
+          final g = bytes[idx + 1];
+          final r = bytes[idx + 2];
+          final luma = (0.299 * r + 0.587 * g + 0.114 * b);
+
+          sum += luma;
+          sumSq += luma * luma;
+          if (luma < 35) dark++;
+          if (luma > 235) bright++;
+          n++;
+        }
+      }
+    } else {
+      final p = image.planes[0];
+      final bytes = p.bytes;
+      final rowStride = p.bytesPerRow;
+      for (int y = 0; y < height; y += stepY) {
+        final rowBase = y * rowStride;
+        for (int x = 0; x < width; x += stepX) {
+          final idx = rowBase + x;
+          if (idx >= bytes.length) continue;
+          final luma = bytes[idx].toDouble();
+
+          sum += luma;
+          sumSq += luma * luma;
+          if (luma < 35) dark++;
+          if (luma > 235) bright++;
+          n++;
+        }
+      }
+    }
+
+    if (n == 0) return null;
+    final mean = sum / n;
+    final variance = (sumSq / n) - (mean * mean);
+    return _LumaStats(
+      mean: mean,
+      variance: variance,
+      darkRatio: dark / n,
+      brightRatio: bright / n,
+    );
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -317,7 +450,6 @@ class CameraController extends ChangeNotifier {
     try {
       _systemAudioBusy = true;
       await _sceneService.stop();
-      _lastSystemAudioPath = path;
       await _audioService.playAssetNow(path);
     } catch (e) {
       debugPrint('🔊 Audio error: $e');
@@ -356,6 +488,7 @@ class CameraController extends ChangeNotifier {
   Future<void> suspendForSettings() async {
     _processingEnabled = false;
     _systemAudioBusy = true;
+    _coverageRefreshTimer?.cancel();
     await _interruptAllAudio();
     await _stopFrameStream();
     _throttler.reset();
@@ -367,6 +500,7 @@ class CameraController extends ChangeNotifier {
     _systemAudioBusy = false;
     _processingEnabled = true;
     await _startFrameStream();
+    _startCoverageRefreshLoop();
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -418,10 +552,11 @@ class CameraController extends ChangeNotifier {
   Future<void> onReplayInstructionsTap() async {
     debugPrint('👆 onReplayInstructionsTap');
 
-    // Replays ONE last clip only.
-    if (_lastSystemAudioPath != null) {
-      debugPrint('🔁 Replaying last system audio clip');
-      await _playAudio(_lastSystemAudioPath!);
+    // Replay the LAST actually played clip globally (system or detection).
+    final lastPath = _audioService.lastPlayedPath;
+    if (lastPath != null && lastPath.isNotEmpty) {
+      debugPrint('🔁 Replaying global last audio clip');
+      await _playAudio(lastPath);
       return;
     }
 
@@ -453,24 +588,52 @@ class CameraController extends ChangeNotifier {
         await _playAudio(_CameraAudio.locationUnavailable);
         return;
       }
-
-      final position = await _locationService.getCurrentPosition();
-      debugPrint('GPS: ${position.latitude}, ${position.longitude}');
-
-      final inside = _locationService.isInsideCircle(
-        position,
-        LocationConstants.arafatZone,
-      );
-
-      await _playAudio(
-        inside ? _CameraAudio.insideArafat : _CameraAudio.outsideArafat,
-      );
+      final inside = await _refreshCoverageStatus();
+      if (inside == null) {
+        await _playAudio(_CameraAudio.locationUnavailable);
+        return;
+      }
+      await _playAudio(inside ? _CameraAudio.insideArafat : _CameraAudio.outsideArafat);
     } catch (_) {
       await _playAudio(_CameraAudio.locationUnavailable);
     } finally {
       _systemAudioBusy = false;
       _locationBusy = false;
       notifyListeners();
+    }
+  }
+
+  void _startCoverageRefreshLoop() {
+    _coverageRefreshTimer?.cancel();
+    // Warm up once at startup (silent).
+    unawaited(_refreshCoverageStatus());
+    _coverageRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      unawaited(_refreshCoverageStatus());
+    });
+  }
+
+  Future<bool?> _refreshCoverageStatus() async {
+    try {
+      final granted = await _permissionService.ensureLocationPermission();
+      if (!granted) return null;
+
+      final position = await _locationService.getCurrentPosition();
+      final inside = _locationService.isInsideCircle(
+        position,
+        LocationConstants.arafatZone,
+      );
+
+      if (_insideArafatZone != inside) {
+        _insideArafatZone = inside;
+        _sceneService.setCoverageStatus(inside);
+        debugPrint('📍 Coverage updated: insideArafat=$inside');
+      } else if (_insideArafatZone == null) {
+        _insideArafatZone = inside;
+        _sceneService.setCoverageStatus(inside);
+      }
+      return inside;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -481,4 +644,18 @@ class CameraController extends ChangeNotifier {
     _state = newState;
     notifyListeners();
   }
+}
+
+class _LumaStats {
+  const _LumaStats({
+    required this.mean,
+    required this.variance,
+    required this.darkRatio,
+    required this.brightRatio,
+  });
+
+  final double mean;
+  final double variance;
+  final double darkRatio;
+  final double brightRatio;
 }

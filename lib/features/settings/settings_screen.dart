@@ -8,7 +8,11 @@ import 'package:gp_hudai/features/settings/settings_controller.dart';
 /// Settings screen — UI only.
 ///
 /// Two tap zones (per spec):
+<<<<<<< HEAD
 ///   - Top-right corner → small "back" tap area → Navigator.pop
+=======
+///   - Top-left corner  → small "back" tap area → Navigator.pop
+>>>>>>> 654d437 (Camera + Integration improvements)
 ///   - Anywhere else    → opens the dedicated emergency-edit screen
 ///
 /// All audio + state lives in [SettingsController]. The emergency-edit
@@ -106,26 +110,15 @@ class _SettingsScreenState extends State<SettingsScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SizedBox(height: 90),
-
-                    const Text(
-                      'الإعدادات',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 30,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-
-                    const SizedBox(height: 36),
+                    const SizedBox(height: 18),
+                    const _AppName(),
+                    const SizedBox(height: 72),
 
                     AnimatedBuilder(
                       animation: _glowAnim,
                       builder: (_, __) => _SettingsTile(
                         icon: Icons.phone_in_talk_rounded,
-                        title: 'تعديل رقم الطوارئ',
+                        title: 'إعـداد رقـم الطـوارئ',
                         currentNumber: _controller.currentNumber,
                         glow: _glowAnim.value,
                         onTap: _onEditEmergencyTap,
@@ -139,10 +132,10 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
           ),
 
-          // Back tap zone — small top-right corner (RTL layout).
+          // Back tap zone — small top-left corner.
           Positioned(
             top: 0,
-            right: 0,
+            left: 0,
             child: SafeArea(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -179,6 +172,25 @@ class _Background extends StatelessWidget {
           stops: [0.0, 0.50, 0.75, 1.0],
         ),
       ),
+    );
+  }
+}
+
+class _AppName extends StatelessWidget {
+  const _AppName();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'هُــــــداي',
+      textDirection: TextDirection.rtl,
+      textAlign: TextAlign.center,
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            fontSize: 17,
+            color: Colors.white.withOpacity(0.45),
+            fontWeight: FontWeight.w400,
+            height: 1.0,
+          ),
     );
   }
 }
@@ -265,6 +277,7 @@ class _SettingsTile extends StatelessWidget {
 
                   Icon(
                     Icons.chevron_left,
+                    textDirection: TextDirection.ltr,
                     color: Colors.white.withOpacity(0.55),
                     size: 22,
                   ),
@@ -292,7 +305,7 @@ class _CurrentNumberLine extends StatelessWidget {
     return Row(
       children: [
         Text(
-          'الرقم الحالي:',
+          'الرقـم الحـالـي:',
           style: TextStyle(color: Colors.white.withOpacity(0.55), fontSize: 13),
         ),
         const SizedBox(width: 6),
@@ -319,7 +332,7 @@ class _CurrentNumberLine extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Glassy back badge in the top-right corner (RTL).
+//  Glassy back badge in the top-left corner.
 //  Visually hints at "back" without being a tiny iOS-style chevron — the
 //  actual hit area extends well past the visible chip.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -330,13 +343,13 @@ class _BackBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 10, right: 10),
+      padding: const EdgeInsets.only(top: 10, left: 10),
       child: SizedBox(
         // Generous tap area for blind/low-vision users.
         width: 110,
         height: 110,
         child: Align(
-          alignment: Alignment.topRight,
+          alignment: Alignment.topLeft,
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: ClipRRect(
@@ -348,7 +361,7 @@ class _BackBadge extends StatelessWidget {
                   height: 64,
                   child: Center(
                     child: _UnifiedIconBadge(
-                      icon: Icons.arrow_forward_ios_rounded,
+                      icon: Icons.arrow_back_ios_new_rounded,
                       size: 46,
                       iconSize: 22,
                     ),

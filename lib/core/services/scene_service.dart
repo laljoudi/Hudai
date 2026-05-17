@@ -21,6 +21,7 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../constants/audio_keys.dart';
 import '../constants/scene_audio_map.dart';
 import '../models/scene_detection.dart';
 import 'audio_service.dart';
@@ -56,9 +57,18 @@ class SceneService {
   /// Null until at least one sequence has been played.
   List<String>? _lastPlayedSequence;
   String? _lastPlayedKey;
+  bool? _insideCoverage;
   /// True if there's a previous instruction available to replay.
   bool get hasLastInstruction =>
       _lastPlayedSequence != null && _lastPlayedSequence!.isNotEmpty;
+
+  /// Injects the latest GPS coverage context (inside/outside Arafat zone).
+  ///
+  /// When outside coverage, location-only "arrival" lines are filtered out
+  /// from model-driven sequences to avoid contradictory guidance.
+  void setCoverageStatus(bool inside) {
+    _insideCoverage = inside;
+  }
 
   // ── Public API ───────────────────────────────────────────────────
 
@@ -155,14 +165,28 @@ class SceneService {
   void _playSequence(List<String> audioKeys) {
     if (audioKeys.isEmpty) return;
 
-    for (final key in audioKeys) {
+    final effectiveSequence = _filterByCoverage(audioKeys);
+    if (effectiveSequence.isEmpty) return;
+
+    for (final key in effectiveSequence) {
       _audioService.play(key);
     }
 
     // Store an immutable copy for the repeat feature.
-    _lastPlayedSequence = List.unmodifiable(audioKeys);
-    _lastPlayedKey = audioKeys.last;
+    _lastPlayedSequence = List.unmodifiable(effectiveSequence);
+    _lastPlayedKey = effectiveSequence.last;
 
-    debugPrint('SceneService: playing ${audioKeys.join(' → ')}');
+    debugPrint('SceneService: playing ${effectiveSequence.join(' → ')}');
+  }
+
+  List<String> _filterByCoverage(List<String> audioKeys) {
+    // If coverage isn't confirmed yet OR user is outside, do not play the
+    // "reached Arafat" line from model detections.
+    if (_insideCoverage != true) {
+      return audioKeys
+          .where((k) => k != AudioKeys.reachedArafat)
+          .toList(growable: false);
+    }
+    return audioKeys;
   }
 }

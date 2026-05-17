@@ -12,7 +12,7 @@ class HudaiApp extends StatelessWidget {
       title: 'GP Hudai',
       theme: AppTheme.light(),
       initialRoute: AppRoutes.splash,
-      routes: AppRoutes.routes,
+      onGenerateRoute: AppRoutes.onGenerateRoute,
       
     );
   }

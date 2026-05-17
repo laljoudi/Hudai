@@ -631,5 +631,9 @@ String _normalizeSaudiNumber(String d) {
   }
 
   return d;
+<<<<<<< HEAD
 }
 
+=======
+}
+>>>>>>> 654d437 (Camera + Integration improvements)

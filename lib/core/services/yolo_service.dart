@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:gp_hudai/core/constants/yolo_config.dart';
+import 'dart:async';
 import 'dart:io' show Platform;
 
 /// Wraps the TensorFlow Lite interpreter for the YOLO Hajj model.
@@ -16,6 +17,7 @@ import 'dart:io' show Platform;
 class YoloService {
   /// The TFLite interpreter — does the actual model inference.
   Interpreter? _interpreter;
+  IsolateInterpreter? _isolateInterpreter;
 
   /// Class labels loaded from labels.txt.
   List<String> _labels = const [];
@@ -27,6 +29,7 @@ class YoloService {
   bool         get isReady     => _isReady;
   List<String> get labels      => _labels;
   Interpreter? get interpreter => _interpreter;
+  bool get hasIsolateRunner => _isolateInterpreter != null;
 
   /// Loads the model and labels from assets.
   /// Call this once at app startup (or when the camera screen opens).
@@ -45,6 +48,17 @@ _interpreter = await Interpreter.fromAsset(
   'assets/models/yolo_hajj.tflite',
   options: options,
 );
+      try {
+        _isolateInterpreter = await IsolateInterpreter.create(
+          address: _interpreter!.address,
+          debugName: 'HudaiYoloIsolate',
+        );
+      } catch (e) {
+        // Fallback to sync interpreter.run if isolate creation fails.
+        _isolateInterpreter = null;
+        // ignore: avoid_print
+        print('⚠️ YoloService: isolate runner unavailable, fallback sync: $e');
+      }
 
       // Load the labels.txt file
       final labelsRaw = await rootBundle.loadString(YoloConfig.labelsPath);
@@ -97,8 +111,24 @@ _interpreter = await Interpreter.fromAsset(
   /// Frees the interpreter when no longer needed.
   /// Call this when the camera screen is disposed.
   void dispose() {
+    final iso = _isolateInterpreter;
+    if (iso != null) {
+      unawaited(iso.close());
+    }
+    _isolateInterpreter = null;
     _interpreter?.close();
     _interpreter = null;
     _isReady = false;
+  }
+
+  /// Runs one inference pass.
+  ///
+  /// Uses IsolateInterpreter when available to keep UI responsive.
+  Future<void> run(Object input, Object output) async {
+    if (_isolateInterpreter != null) {
+      await _isolateInterpreter!.run(input, output);
+      return;
+    }
+    _interpreter?.run(input, output);
   }
 }

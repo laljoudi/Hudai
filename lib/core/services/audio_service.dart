@@ -40,6 +40,11 @@ class AudioService {
   final Queue<String> _queue = Queue<String>();
   bool _draining = false;
   int _interruptToken = 0;
+  String? _lastPlayedPath;
+  int _lastPlayedAtMs = 0;
+
+  String? get lastPlayedPath => _lastPlayedPath;
+  int get lastPlayedAtMs => _lastPlayedAtMs;
 
   Future<void> _configure() async {
     try {
@@ -146,6 +151,8 @@ class AudioService {
   Future<void> _safePlayAndWait(String path, {required int token}) async {
     try {
       if (token != _interruptToken) return;
+      _lastPlayedPath = path;
+      _lastPlayedAtMs = DateTime.now().millisecondsSinceEpoch;
       await _player.play(AssetSource(path));
       final duration = await _player.getDuration();
       final wait = (duration == null || duration <= Duration.zero)
