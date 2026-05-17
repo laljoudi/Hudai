@@ -55,8 +55,13 @@ class _SettingsEmergencyScreenState extends State<SettingsEmergencyScreen>
   void _onControllerUpdate() {
     if (!mounted) return;
     if (_controller.shouldNavigate) {
+      debugPrint('🧭 SE listener: shouldNavigate=true → scheduling pop');
       _controller.clearNavigationFlag();
-      _navigateToCamera();
+      // Defer to the next frame so we don't pop while a build/listener
+      // is still in flight (which can swallow the call on some devices).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _navigateToCamera();
+      });
       return;
     }
     setState(() {});
