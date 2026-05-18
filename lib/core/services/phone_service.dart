@@ -8,15 +8,20 @@ import 'package:url_launcher/url_launcher.dart';
 class PhoneService {
   const PhoneService();
 
-  static const String defaultEmergencyNumber = '911';
   static const PermissionService _permissionService = PermissionService();
 
-  Future<bool> callEmergency([String number = defaultEmergencyNumber]) async {
-    final savedNumber = await Prefs.getEmergencyNumber();
-    final targetNumber = savedNumber != null && savedNumber.trim().isNotEmpty
-        ? savedNumber
-        : number;
-    return callNumber(targetNumber);
+  /// Dials the user-saved emergency number from `SharedPreferences`.
+  ///
+  /// Returns `false` if no number is saved. In the normal flow this
+  /// cannot happen because the Setup screen blocks navigation to the
+  /// Camera screen until a valid `05xxxxxxxx` number has been persisted.
+  /// `_normalizeNumber` requires the Saudi `05` prefix and would reject any invalid number, so we can be sure that the saved number is valid.
+  Future<bool> callEmergency() async {
+    final saved = await Prefs.getEmergencyNumber();
+    if (saved == null || saved.trim().isEmpty) {
+      return false;
+    }
+    return callNumber(saved);
   }
 
   Future<bool> callNumber(String number) async {
