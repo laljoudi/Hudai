@@ -8,6 +8,8 @@ environment:
   sdk: ^3.8.1
 
 dependencies:
+  flutter_localizations:
+    sdk: flutter
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
@@ -71,3 +73,6 @@ flutter:
           weight: 300
         - asset: assets/fonts/IBMPlexSansArabic-Regular.ttf
           weight: 400
+        - asset: assets/fonts/IBMPlexSansArabic-Bold.ttf
+          weight: 700
+
