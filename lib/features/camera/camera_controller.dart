@@ -30,7 +30,7 @@ const bool kForceMockCamera = false;
 enum DemoCoverageMode { off, forceInsideArafat, forceOutsideArafat }
 
 // Set this to force coverage state during demo.
-const DemoCoverageMode kDemoCoverageMode = DemoCoverageMode.forceInsideArafat;
+const DemoCoverageMode kDemoCoverageMode = DemoCoverageMode.off;
 
 /// Audio file paths used by the camera screen.
 /// Note: audioplayers uses paths WITHOUT the 'assets/' prefix.
@@ -92,6 +92,7 @@ class CameraController extends ChangeNotifier {
   int _blockedFrameStreak = 0;
   Timer? _coverageRefreshTimer;
   bool? _insideArafatZone;
+  bool? _lastSceneInferenceAllowedLog;
   double? _previousMotionLuma;
   int _motionFastStreak = 0;
 
@@ -228,6 +229,13 @@ class CameraController extends ChangeNotifier {
   /// Runs the full AI pipeline at ~3 FPS via the throttler.
   Future<void> _onCameraFrame(cam.CameraImage image) async {
     if (!_processingEnabled) return;
+
+    final canRunSceneInference = _canRunSceneInference;
+    _logSceneInferenceGate(canRunSceneInference);
+    if (!canRunSceneInference) {
+      _clearLiveDetections();
+      return;
+    }
 
     _updateAdaptiveThrottle(image);
 
@@ -603,13 +611,40 @@ class CameraController extends ChangeNotifier {
         await _playAudio(_CameraAudio.locationUnavailable);
         return;
       }
-      await _playAudio(inside ? _CameraAudio.insideArafat : _CameraAudio.outsideArafat);
+      await _playAudio(
+        inside ? _CameraAudio.insideArafat : _CameraAudio.outsideArafat,
+      );
     } catch (_) {
       await _playAudio(_CameraAudio.locationUnavailable);
     } finally {
       _systemAudioBusy = false;
       _locationBusy = false;
       notifyListeners();
+    }
+  }
+
+  bool get _canRunSceneInference => _insideArafatZone == true;
+
+  void _logSceneInferenceGate(bool allowed) {
+    if (_lastSceneInferenceAllowedLog == allowed) return;
+    _lastSceneInferenceAllowedLog = allowed;
+
+    final locationText = _insideArafatZone == null
+        ? 'location unknown'
+        : (_insideArafatZone! ? 'inside Arafat' : 'outside Arafat');
+    debugPrint(
+      allowed
+          ? '✅ Scene inference ENABLED: user is inside Arafat.'
+          : '⛔ Scene inference BLOCKED: user is $locationText.',
+    );
+  }
+
+  void _clearLiveDetections() {
+    if (_state.currentDetections.isNotEmpty) {
+      _state = _state.copyWith(currentDetections: const []);
+    }
+    if (_detectionsNotifier.value.isNotEmpty) {
+      _detectionsNotifier.value = const [];
     }
   }
 
@@ -625,8 +660,12 @@ class CameraController extends ChangeNotifier {
   Future<bool?> _refreshCoverageStatus() async {
     try {
       if (kDemoCoverageMode != DemoCoverageMode.off) {
-        final forcedInside = kDemoCoverageMode == DemoCoverageMode.forceInsideArafat;
+        final forcedInside =
+            kDemoCoverageMode == DemoCoverageMode.forceInsideArafat;
         _insideArafatZone = forcedInside;
+        if (!forcedInside) {
+          _clearLiveDetections();
+        }
         _sceneService.setCoverageStatus(forcedInside);
         debugPrint(
           '📍 Coverage (demo mode): insideArafat=$forcedInside '
@@ -636,7 +675,12 @@ class CameraController extends ChangeNotifier {
       }
 
       final granted = await _permissionService.ensureLocationPermission();
-      if (!granted) return null;
+      if (!granted) {
+        _insideArafatZone = null;
+        _clearLiveDetections();
+        _sceneService.setCoverageStatus(false);
+        return null;
+      }
 
       final position = await _locationService.getCurrentPosition();
       final distance = _locationService.distanceToCircleCenter(
@@ -654,14 +698,23 @@ class CameraController extends ChangeNotifier {
 
       if (_insideArafatZone != inside) {
         _insideArafatZone = inside;
+        if (!inside) {
+          _clearLiveDetections();
+        }
         _sceneService.setCoverageStatus(inside);
         debugPrint('📍 Coverage updated: insideArafat=$inside');
       } else if (_insideArafatZone == null) {
         _insideArafatZone = inside;
+        if (!inside) {
+          _clearLiveDetections();
+        }
         _sceneService.setCoverageStatus(inside);
       }
       return inside;
     } catch (_) {
+      _insideArafatZone = null;
+      _clearLiveDetections();
+      _sceneService.setCoverageStatus(false);
       return null;
     }
   }
