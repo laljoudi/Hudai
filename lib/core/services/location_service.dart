@@ -10,9 +10,6 @@ class LocationServiceDisabledException implements Exception {
 class LocationService {
   const LocationService();
 
-  static Position? _cachedPosition;
-  static int _cachedAtMs = 0;
-
  Future<Position> getCurrentPosition() async {
   final enabled = await Geolocator.isLocationServiceEnabled();
   if (!enabled) throw const LocationServiceDisabledException();
@@ -26,13 +23,17 @@ class LocationService {
 }
 
   bool isInsideCircle(Position position, GeoCircle circle) {
-    final distance = Geolocator.distanceBetween(
+    final distance = distanceToCircleCenter(position, circle);
+
+    return distance <= circle.radiusMeters;
+  }
+
+  double distanceToCircleCenter(Position position, GeoCircle circle) {
+    return Geolocator.distanceBetween(
       position.latitude,
       position.longitude,
       circle.center.lat,
       circle.center.lng,
     );
-
-    return distance <= circle.radiusMeters;
   }
 }

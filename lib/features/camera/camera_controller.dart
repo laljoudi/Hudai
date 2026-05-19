@@ -22,6 +22,16 @@ import 'package:gp_hudai/core/services/phone_service.dart';
 
 const bool kForceMockCamera = false;
 
+/// Demo coverage mode for quick presentations.
+///
+/// - `off`: use real GPS.
+/// - `forceInsideArafat`: always inside Arafat.
+/// - `forceOutsideArafat`: always outside Arafat.
+enum DemoCoverageMode { off, forceInsideArafat, forceOutsideArafat }
+
+// Set this to force coverage state during demo.
+const DemoCoverageMode kDemoCoverageMode = DemoCoverageMode.forceInsideArafat;
+
 /// Audio file paths used by the camera screen.
 /// Note: audioplayers uses paths WITHOUT the 'assets/' prefix.
 class _CameraAudio {
@@ -614,13 +624,32 @@ class CameraController extends ChangeNotifier {
 
   Future<bool?> _refreshCoverageStatus() async {
     try {
+      if (kDemoCoverageMode != DemoCoverageMode.off) {
+        final forcedInside = kDemoCoverageMode == DemoCoverageMode.forceInsideArafat;
+        _insideArafatZone = forcedInside;
+        _sceneService.setCoverageStatus(forcedInside);
+        debugPrint(
+          '📍 Coverage (demo mode): insideArafat=$forcedInside '
+          'mode=$kDemoCoverageMode',
+        );
+        return forcedInside;
+      }
+
       final granted = await _permissionService.ensureLocationPermission();
       if (!granted) return null;
 
       final position = await _locationService.getCurrentPosition();
+      final distance = _locationService.distanceToCircleCenter(
+        position,
+        LocationConstants.arafatZone,
+      );
       final inside = _locationService.isInsideCircle(
         position,
         LocationConstants.arafatZone,
+      );
+      debugPrint(
+        '📍 GPS: ${position.latitude}, ${position.longitude} | '
+        'distanceToArafat=${distance.toStringAsFixed(1)}m | inside=$inside',
       );
 
       if (_insideArafatZone != inside) {

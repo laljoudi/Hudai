@@ -10,15 +10,6 @@ import 'package:gp_hudai/features/debug/yolo_debug_screen.dart';
 class AppRoutes {
   AppRoutes._();
 
-<<<<<<< HEAD
-  static const String splash             = '/';
-  static const String voiceInstructions  = '/voice-instructions';
-  static const String setup              = '/setup';
-  static const String camera             = '/camera';
-  static const String settings           = '/settings';
-  static const String settingsEmergency  = '/settings/emergency';
-  static const String yoloDebug          = '/yolo-debug';
-=======
   static const String splash = '/';
   static const String voiceInstructions = '/voice-instructions';
   static const String setup = '/setup';
@@ -26,24 +17,15 @@ class AppRoutes {
   static const String settings = '/settings';
   static const String settingsEmergency = '/settings/emergency';
   static const String yoloDebug = '/yolo-debug';
->>>>>>> 654d437 (Camera + Integration improvements)
 
   static final Map<String, WidgetBuilder> routes = {
     splash: (_) => const SplashScreen(),
     voiceInstructions: (_) => const VoiceInstructionsScreen(),
-<<<<<<< HEAD
-    setup:             (_) => const SetupScreen(),
-    camera:            (_) => const CameraScreen(),
-    settings:          (_) => const SettingsScreen(),
-    settingsEmergency: (_) => const SettingsEmergencyScreen(),
-    yoloDebug:         (_) => const YoloDebugScreen(),
-=======
     setup: (_) => const SetupScreen(),
     camera: (_) => const CameraScreen(),
     settings: (_) => const SettingsScreen(),
     settingsEmergency: (_) => const SettingsEmergencyScreen(),
     yoloDebug: (_) => const YoloDebugScreen(),
->>>>>>> 654d437 (Camera + Integration improvements)
   };
 
   static Route<dynamic>? onGenerateRoute(RouteSettings settings) {

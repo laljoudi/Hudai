@@ -242,6 +242,7 @@ class _CameraScreenState extends State<CameraScreen> {
         Expanded(
           flex: 3,
           child: Row(
+            textDirection: TextDirection.ltr,
             children: [
               Expanded(child: _tapZone(onTap: _onSettingsTap)),
               Expanded(child: _tapZone(onTap: _controller.onEmergencyTap)),
@@ -252,6 +253,7 @@ class _CameraScreenState extends State<CameraScreen> {
         Expanded(
           flex: 3,
           child: Row(
+            textDirection: TextDirection.ltr,
             children: [
               Expanded(
                 child: _tapZone(onTap: _controller.onReplayInstructionsTap),
