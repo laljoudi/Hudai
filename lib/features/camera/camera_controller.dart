@@ -10,6 +10,7 @@ import 'package:gp_hudai/core/services/yolo_service.dart';
 import 'package:gp_hudai/core/services/frame_preprocessor.dart';
 import 'package:gp_hudai/core/services/detection_decoder.dart';
 import 'package:gp_hudai/core/services/inference_throttler.dart';
+import 'package:gp_hudai/core/services/location_guidance_service.dart';
 import 'package:gp_hudai/core/services/location_service.dart';
 import 'package:gp_hudai/core/services/permission_service.dart';
 import 'package:gp_hudai/core/storage/prefs.dart';
@@ -36,10 +37,6 @@ const DemoCoverageMode kDemoCoverageMode = DemoCoverageMode.off;
 /// Note: audioplayers uses paths WITHOUT the 'assets/' prefix.
 class _CameraAudio {
   static const String intro = 'audio/camera/camera_intro.mp3';
-  static const String insideArafat = 'audio/location/inside_arafat.mp3';
-  static const String outsideArafat = 'audio/location/outside_arafat.mp3';
-  static const String locationUnavailable =
-      'audio/location/location_unavailable.mp3';
 }
 
 /// The brain of the camera screen.
@@ -58,6 +55,8 @@ class CameraController extends ChangeNotifier {
   final DetectionDecoder _decoder = const DetectionDecoder();
   final InferenceThrottler _throttler = InferenceThrottler();
   final LocationService _locationService = const LocationService();
+  final LocationGuidanceService _locationGuidanceService =
+      const LocationGuidanceService();
   final PermissionService _permissionService = const PermissionService();
   final AudioService _audioService = AudioService();
   late final SceneService _sceneService;
@@ -93,6 +92,7 @@ class CameraController extends ChangeNotifier {
   Timer? _coverageRefreshTimer;
   bool? _insideArafatZone;
   bool? _lastSceneInferenceAllowedLog;
+  bool _hasAnnouncedOutsideArafat = false;
   double? _previousMotionLuma;
   int _motionFastStreak = 0;
 
@@ -476,6 +476,23 @@ class CameraController extends ChangeNotifier {
     }
   }
 
+  Future<void> _playAudioSequence(List<String> paths) async {
+    if (paths.isEmpty) return;
+
+    debugPrint('🔊 Playing sequence: ${paths.join(' → ')}');
+    try {
+      _systemAudioBusy = true;
+      await _sceneService.stop();
+      for (final path in paths) {
+        await _audioService.playAssetNow(path);
+      }
+    } catch (e) {
+      debugPrint('🔊 Audio sequence error: $e');
+    } finally {
+      _systemAudioBusy = false;
+    }
+  }
+
   Future<void> _playIntroOnce() async {
     await Future.delayed(const Duration(milliseconds: 800));
 
@@ -559,7 +576,7 @@ class CameraController extends ChangeNotifier {
       debugPrint('☎️ Call placed successfully');
     } else {
       debugPrint('🚨 Call failed — no number set or permission denied');
-      await _playAudio(_CameraAudio.locationUnavailable); // reuse error audio
+      await _playAudio(LocationAudioPaths.locationUnavailable);
     }
   }
 
@@ -601,21 +618,46 @@ class CameraController extends ChangeNotifier {
       // Stop any current clip immediately on tap.
       await _interruptAllAudio();
 
+      if (_locationGuidanceService.isDemoModeEnabled) {
+        final guidance = _locationGuidanceService.buildDemoGuidance();
+        _updateCoverageStatus(guidance.insideArafat);
+
+        debugPrint(
+          '📍 Demo location mode: $kDemoLocationMode | '
+          'insideArafat=${guidance.insideArafat} | '
+          'nearNamirah=${guidance.nearNamirah} | '
+          'distanceToJabal=${guidance.distanceToJabalMeters.toStringAsFixed(1)}m',
+        );
+
+        await _playAudioSequence(guidance.audioSequence);
+        return;
+      }
+
       final granted = await _permissionService.ensureLocationPermission();
       if (!granted) {
-        await _playAudio(_CameraAudio.locationUnavailable);
+        await _playAudio(LocationAudioPaths.locationUnavailable);
         return;
       }
-      final inside = await _refreshCoverageStatus();
-      if (inside == null) {
-        await _playAudio(_CameraAudio.locationUnavailable);
-        return;
-      }
-      await _playAudio(
-        inside ? _CameraAudio.insideArafat : _CameraAudio.outsideArafat,
+
+      final position = await _locationService.getCurrentPosition();
+      final guidance = _locationGuidanceService.buildGuidance(position);
+      _updateCoverageStatus(guidance.insideArafat);
+
+      debugPrint(
+        '📍 Manual location: ${position.latitude}, ${position.longitude} | '
+        'accuracy=${position.accuracy.toStringAsFixed(1)}m | '
+        'insideArafat=${guidance.insideArafat} | '
+        'nearNamirah=${guidance.nearNamirah} | '
+        'distanceToJabal=${guidance.distanceToJabalMeters.toStringAsFixed(1)}m',
       );
+
+      if (guidance.audioSequence.isEmpty) {
+        await _playAudio(LocationAudioPaths.locationUnavailable);
+        return;
+      }
+      await _playAudioSequence(guidance.audioSequence);
     } catch (_) {
-      await _playAudio(_CameraAudio.locationUnavailable);
+      await _playAudio(LocationAudioPaths.locationUnavailable);
     } finally {
       _systemAudioBusy = false;
       _locationBusy = false;
@@ -650,27 +692,43 @@ class CameraController extends ChangeNotifier {
 
   void _startCoverageRefreshLoop() {
     _coverageRefreshTimer?.cancel();
-    // Warm up once at startup (silent).
-    unawaited(_refreshCoverageStatus());
+    // Warm up once at startup. If the user is outside Arafat, announce it once
+    // so they know why scene detection is not running.
+    unawaited(_refreshCoverageStatus(announceOutsideOnce: true));
     _coverageRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       unawaited(_refreshCoverageStatus());
     });
   }
 
-  Future<bool?> _refreshCoverageStatus() async {
+  Future<bool?> _refreshCoverageStatus({
+    bool announceOutsideOnce = false,
+  }) async {
     try {
+      if (_locationGuidanceService.isDemoModeEnabled) {
+        final guidance = _locationGuidanceService.buildDemoGuidance();
+        _updateCoverageStatus(guidance.insideArafat);
+        debugPrint(
+          '📍 Coverage (location demo mode): '
+          'insideArafat=${guidance.insideArafat} | '
+          'mode=$kDemoLocationMode',
+        );
+        if (announceOutsideOnce && !guidance.insideArafat) {
+          await _announceOutsideArafatIfNeeded();
+        }
+        return guidance.insideArafat;
+      }
+
       if (kDemoCoverageMode != DemoCoverageMode.off) {
         final forcedInside =
             kDemoCoverageMode == DemoCoverageMode.forceInsideArafat;
-        _insideArafatZone = forcedInside;
-        if (!forcedInside) {
-          _clearLiveDetections();
-        }
-        _sceneService.setCoverageStatus(forcedInside);
+        _updateCoverageStatus(forcedInside);
         debugPrint(
           '📍 Coverage (demo mode): insideArafat=$forcedInside '
           'mode=$kDemoCoverageMode',
         );
+        if (announceOutsideOnce && !forcedInside) {
+          await _announceOutsideArafatIfNeeded();
+        }
         return forcedInside;
       }
 
@@ -697,18 +755,14 @@ class CameraController extends ChangeNotifier {
       );
 
       if (_insideArafatZone != inside) {
-        _insideArafatZone = inside;
-        if (!inside) {
-          _clearLiveDetections();
-        }
-        _sceneService.setCoverageStatus(inside);
+        _updateCoverageStatus(inside);
         debugPrint('📍 Coverage updated: insideArafat=$inside');
       } else if (_insideArafatZone == null) {
-        _insideArafatZone = inside;
-        if (!inside) {
-          _clearLiveDetections();
-        }
-        _sceneService.setCoverageStatus(inside);
+        _updateCoverageStatus(inside);
+      }
+
+      if (announceOutsideOnce && !inside) {
+        await _announceOutsideArafatIfNeeded();
       }
       return inside;
     } catch (_) {
@@ -717,6 +771,22 @@ class CameraController extends ChangeNotifier {
       _sceneService.setCoverageStatus(false);
       return null;
     }
+  }
+
+  void _updateCoverageStatus(bool inside) {
+    _insideArafatZone = inside;
+    if (!inside) {
+      _clearLiveDetections();
+    } else {
+      _hasAnnouncedOutsideArafat = false;
+    }
+    _sceneService.setCoverageStatus(inside);
+  }
+
+  Future<void> _announceOutsideArafatIfNeeded() async {
+    if (_hasAnnouncedOutsideArafat) return;
+    _hasAnnouncedOutsideArafat = true;
+    await _playAudio(LocationAudioPaths.outsideArafat);
   }
 
   // ──────────────────────────────────────────────────────────────────
