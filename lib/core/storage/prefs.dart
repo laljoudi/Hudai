@@ -45,4 +45,8 @@ class Prefs {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(cameraIntroHeardKey, true);
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> ba049d2 (تحديثات بشكل عام)

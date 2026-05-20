@@ -37,6 +37,8 @@ const DemoCoverageMode kDemoCoverageMode = DemoCoverageMode.off;
 /// Note: audioplayers uses paths WITHOUT the 'assets/' prefix.
 class _CameraAudio {
   static const String intro = 'audio/camera/camera_intro.mp3';
+  static const String permissionDenied =
+      'audio/camera/camera_permission_denied.mp3';
 }
 
 /// The brain of the camera screen.
@@ -110,8 +112,23 @@ class CameraController extends ChangeNotifier {
     _sceneService = SceneService(audioService: _audioService);
     debugPrint('🎬 CameraController: initialize()');
 
-    // Step 1: Initialize camera (without starting frame stream yet)
+    // Step 1: Initialize camera (without starting frame stream yet).
+    // If this fails (permission denied / no camera), it plays its own
+    // audio message explaining the situation.
     await _initCamera();
+
+    if (_useMockCamera) {
+      // Camera is unavailable. The permission-denied audio has already
+      // played inside _initCamera(). Still play the intro so the user
+      // learns about location and emergency features that remain available.
+      // Only skip the AI pipeline (model load + frame stream).
+      debugPrint(
+        '🎬 Camera unavailable → playing intro, skipping model load and frame stream',
+      );
+      await _playIntroOnce();
+      _startCoverageRefreshLoop();
+      return;
+    }
 
     // Step 2: Play intro first (per requirement).
     await _playIntroOnce();
@@ -156,8 +173,8 @@ class CameraController extends ChangeNotifier {
       final cameras = await cam.availableCameras();
       if (cameras.isEmpty) {
         _useMockCamera = true;
-        _cameraError = 'لا توجد كاميرا متاحة، تم تفعيل الوضع التجريبي.';
         notifyListeners();
+        await _announceCameraUnavailable();
         return;
       }
 
@@ -197,8 +214,27 @@ class CameraController extends ChangeNotifier {
       _updateState(_state.copyWith(isCameraReady: true));
     } catch (_) {
       _useMockCamera = true;
-      _cameraError = 'تعذر تشغيل الكاميرا، تم تفعيل الوضع التجريبي.';
       notifyListeners();
+      await _announceCameraUnavailable();
+    }
+  }
+
+  /// Plays the audio message that informs the user the camera is not
+  /// available and reminds them which features still work (location and
+  /// emergency call). Called from both failure branches of [_initCamera].
+  ///
+  /// Errors are swallowed: if audio playback fails for any reason, we
+  /// still want the rest of [initialize] to proceed so the user keeps
+  /// access to the non-camera features.
+  Future<void> _announceCameraUnavailable() async {
+    debugPrint('🔊 Announcing camera unavailable to user');
+    try {
+      _systemAudioBusy = true;
+      await _audioService.playAssetNow(_CameraAudio.permissionDenied);
+    } catch (e) {
+      debugPrint('🔊 Failed to play camera-unavailable audio: $e');
+    } finally {
+      _systemAudioBusy = false;
     }
   }
 
