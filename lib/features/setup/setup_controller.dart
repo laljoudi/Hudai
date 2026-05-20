@@ -114,8 +114,15 @@ class SetupController extends ChangeNotifier {
 
     // طلب إذن الميكروفون + التعرف على الكلام عند فتح شاشة التسجيل
     // حتى لا يتفاجأ المستخدم لاحقًا وقت بدء الإدخال الصوتي.
-    await _ensureVoicePermissions();
+    final granted = await _ensureVoicePermissions();
     if (_disposed) return;
+
+    if (!granted) {
+      debugPrint('🎙️ mic denied at init → switching to manual mode');
+      _setStage(SetupStage.manual);
+      await _playAndWait(_SetupAudio.manualIntro);
+      return;
+    }
 
     _setStage(SetupStage.idle);
   }
@@ -232,7 +239,9 @@ class SetupController extends ChangeNotifier {
     // 2. Request microphone + speech permissions
     final granted = await _ensureVoicePermissions();
     if (!granted) {
-      _setStage(SetupStage.idle);
+      debugPrint('🎙️ mic denied in voice flow → switching to manual mode');
+      _setStage(SetupStage.manual);
+      await _playAndWait(_SetupAudio.manualIntro);
       return;
     }
 
