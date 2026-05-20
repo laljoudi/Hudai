@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:gp_hudai/app/app_routes.dart';
+import 'package:gp_hudai/core/storage/prefs.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -12,6 +13,11 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
   Timer? _navigateTimer;
+
+  /// Kicked off in initState so the SharedPreferences read overlaps with
+  /// the 6-second intro animation. By the time the timer fires this is
+  /// almost always already resolved.
+  late final Future<bool> _hasSavedNumberFuture;
 
   // Body (white figure) fade-in
   late AnimationController _bodyCtrl;
@@ -69,8 +75,12 @@ class _SplashScreenState extends State<SplashScreen>
 
     _startSequence();
 
-    // Navigate after 3 seconds (same as before)
-    _navigateTimer = Timer(const Duration(milliseconds: 6000), _goToVoice);
+    // Start the prefs check immediately so it overlaps with the animation.
+    _hasSavedNumberFuture = Prefs.hasValidEmergencyNumber();
+
+    // Navigate after the intro animation. The destination depends on
+    // whether a valid emergency number is already saved.
+    _navigateTimer = Timer(const Duration(milliseconds: 6000), _decideNextRoute);
   }
 
   Future<void> _startSequence() async {
@@ -106,9 +116,23 @@ class _SplashScreenState extends State<SplashScreen>
     super.dispose();
   }
 
-  void _goToVoice() {
+  /// First launch (no valid saved number)  → Voice Instructions → Setup → Camera.
+  /// Later launches (valid number stored) → Camera directly.
+  Future<void> _decideNextRoute() async {
     if (!mounted) return;
-    Navigator.pushReplacementNamed(context, AppRoutes.voiceInstructions);
+
+    bool hasSaved;
+    try {
+      hasSaved = await _hasSavedNumberFuture;
+    } catch (e) {
+      debugPrint('🚨 splash: prefs read failed, falling back to onboarding: $e');
+      hasSaved = false;
+    }
+    if (!mounted) return;
+
+    final route = hasSaved ? AppRoutes.camera : AppRoutes.voiceInstructions;
+    debugPrint('🧭 splash → $route (hasSavedNumber=$hasSaved)');
+    Navigator.pushReplacementNamed(context, route);
   }
 
   @override
