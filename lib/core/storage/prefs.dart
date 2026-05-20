@@ -25,6 +25,14 @@ class Prefs {
     final number = await getEmergencyNumber();
     return number != null && number.trim().isNotEmpty;
   }
+
+  /// Saudi mobile format: exactly 10 digits, starts with "05".
+  /// Used by the splash screen to decide whether to skip the setup flow.
+  static Future<bool> hasValidEmergencyNumber() async {
+    final number = await getEmergencyNumber();
+    if (number == null) return false;
+    return RegExp(r'^05\d{8}$').hasMatch(number.trim());
+  }
     // ── Camera intro audio (plays once on first visit) ────────────────────────
   static const String cameraIntroHeardKey = 'camera_intro_heard';
 
@@ -38,4 +46,3 @@ class Prefs {
     await prefs.setBool(cameraIntroHeardKey, true);
   }
 }
-
