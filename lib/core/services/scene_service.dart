@@ -155,18 +155,20 @@ class SceneService {
       return false;
     }
 
-    _lastPlayedAt[profile.category] = now;
-    _playSequence(profile.audioSequence);
-    return true;
+    final played = _playSequence(profile.audioSequence);
+    if (played) {
+      _lastPlayedAt[profile.category] = now;
+    }
+    return played;
   }
 
   // ── Playback (private) ───────────────────────────────────────────
 
-  void _playSequence(List<String> audioKeys) {
-    if (audioKeys.isEmpty) return;
+  bool _playSequence(List<String> audioKeys) {
+    if (audioKeys.isEmpty) return false;
 
     final effectiveSequence = _filterByCoverage(audioKeys);
-    if (effectiveSequence.isEmpty) return;
+    if (effectiveSequence.isEmpty) return false;
 
     for (final key in effectiveSequence) {
       _audioService.play(key);
@@ -177,6 +179,7 @@ class SceneService {
     _lastPlayedKey = effectiveSequence.last;
 
     debugPrint('SceneService: playing ${effectiveSequence.join(' → ')}');
+    return true;
   }
 
   List<String> _filterByCoverage(List<String> audioKeys) {
