@@ -46,8 +46,8 @@ class PermissionService {
   Future<bool> ensureCameraPermission({
     bool openSettingsIfDeniedForever = true,
   }) async {
-    // في محاكي iOS لا تعمل صلاحية الكاميرا كسلوك جهاز حقيقي.
-    // نعتبرها مسموحة لتكملة التدفق أثناء التطوير.
+    // Camera permission does not behave like a real device on the iOS simulator.
+    // Grant it implicitly to keep the development flow unblocked.
     if (_isIosSimulator) {
       debugPrint('PERM Camera: iOS Simulator detected, skipping prompt.');
       return true;

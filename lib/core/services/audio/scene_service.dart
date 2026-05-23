@@ -1,4 +1,4 @@
-// lib/core/services/scene_service.dart
+// lib/core/services/audio/scene_service.dart
 //
 // Responsibilities:
 //   1. Receives per-frame detections → resolves the highest-priority profile.
@@ -21,9 +21,9 @@
 
 import 'package:flutter/foundation.dart';
 
-import '../constants/audio_keys.dart';
-import '../constants/scene_audio_map.dart';
-import '../models/scene_detection.dart';
+import '../../constants/audio_keys.dart';
+import '../../constants/scene_audio_map.dart';
+import '../../models/scene_detection.dart';
 import 'audio_service.dart';
 
 class SceneService {
@@ -155,18 +155,20 @@ class SceneService {
       return false;
     }
 
-    _lastPlayedAt[profile.category] = now;
-    _playSequence(profile.audioSequence);
-    return true;
+    final played = _playSequence(profile.audioSequence);
+    if (played) {
+      _lastPlayedAt[profile.category] = now;
+    }
+    return played;
   }
 
   // ── Playback (private) ───────────────────────────────────────────
 
-  void _playSequence(List<String> audioKeys) {
-    if (audioKeys.isEmpty) return;
+  bool _playSequence(List<String> audioKeys) {
+    if (audioKeys.isEmpty) return false;
 
     final effectiveSequence = _filterByCoverage(audioKeys);
-    if (effectiveSequence.isEmpty) return;
+    if (effectiveSequence.isEmpty) return false;
 
     for (final key in effectiveSequence) {
       _audioService.play(key);
@@ -177,6 +179,7 @@ class SceneService {
     _lastPlayedKey = effectiveSequence.last;
 
     debugPrint('SceneService: playing ${effectiveSequence.join(' → ')}');
+    return true;
   }
 
   List<String> _filterByCoverage(List<String> audioKeys) {

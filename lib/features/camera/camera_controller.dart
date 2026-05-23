@@ -6,18 +6,18 @@ import 'dart:io' show Platform;
 
 import 'package:gp_hudai/core/constants/location_constants.dart';
 import 'package:gp_hudai/core/models/detection.dart';
-import 'package:gp_hudai/core/services/yolo_service.dart';
-import 'package:gp_hudai/core/services/frame_preprocessor.dart';
-import 'package:gp_hudai/core/services/detection_decoder.dart';
-import 'package:gp_hudai/core/services/inference_throttler.dart';
-import 'package:gp_hudai/core/services/location_guidance_service.dart';
-import 'package:gp_hudai/core/services/location_service.dart';
+import 'package:gp_hudai/core/services/ai/yolo_service.dart';
+import 'package:gp_hudai/core/services/ai/frame_preprocessor.dart';
+import 'package:gp_hudai/core/services/ai/detection_decoder.dart';
+import 'package:gp_hudai/core/services/ai/inference_throttler.dart';
+import 'package:gp_hudai/core/services/location/location_guidance_service.dart';
+import 'package:gp_hudai/core/services/location/location_service.dart';
 import 'package:gp_hudai/core/services/permission_service.dart';
 import 'package:gp_hudai/core/storage/prefs.dart';
 import 'package:gp_hudai/features/camera/camera_state.dart';
-import 'package:gp_hudai/core/services/audio_service.dart';
-import 'package:gp_hudai/core/services/scene_service.dart';
-import 'package:gp_hudai/core/services/detection_to_scene_adapter.dart';
+import 'package:gp_hudai/core/services/audio/audio_service.dart';
+import 'package:gp_hudai/core/services/audio/scene_service.dart';
+import 'package:gp_hudai/core/services/ai/detection_to_scene_adapter.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:gp_hudai/core/services/phone_service.dart';
 
@@ -97,6 +97,31 @@ class CameraController extends ChangeNotifier {
   bool _hasAnnouncedOutsideArafat = false;
   double? _previousMotionLuma;
   int _motionFastStreak = 0;
+
+  // ============================================================
+  // PERFORMANCE TEST [PT-01] — START
+  // Purpose: Collect per-inference latency over 30 samples
+  // Remove this block after testing is complete
+  // ============================================================
+  final Stopwatch _pt01Watch = Stopwatch();
+  int _pt01WarmUpCount = 0;   // first 10 inferences are skipped
+  int _pt01SampleCount = 0;
+  final List<double> _pt01Latencies = [];
+  // ============================================================
+  // PERFORMANCE TEST [PT-01] — END
+  // ============================================================
+
+  // ============================================================
+  // PERFORMANCE TEST [PT-02] — START
+  // Purpose: Count inferences over a 60-second window for FPS
+  // Remove this block after testing is complete
+  // ============================================================
+  int _pt02WarmUpCount = 0;   // first 10 inferences are skipped
+  int _pt02FrameCount = 0;
+  DateTime? _pt02WindowStart;
+  // ============================================================
+  // PERFORMANCE TEST [PT-02] — END
+  // ============================================================
 
   bool get useMockCamera => _useMockCamera;
   String? get cameraError => _cameraError;
@@ -319,8 +344,72 @@ class CameraController extends ChangeNotifier {
         _throttler.markDone();
         return;
       }
+      // ============================================================
+      // PERFORMANCE TEST [PT-01] — START
+      // Purpose: Start stopwatch before inference (warm-up skipped)
+      // Remove this block after testing is complete
+      // ============================================================
+      if (_pt01WarmUpCount >= 10 && _pt01SampleCount < 30) _pt01Watch
+        ..reset()
+        ..start();
+      // ============================================================
+      // PERFORMANCE TEST [PT-01] — END
+      // ============================================================
+
       // 6. Run inference
       await _yoloService.run(reshapedInput, output);
+
+      // ============================================================
+      // PERFORMANCE TEST [PT-01] — START
+      // Purpose: Record sample; log mean once 30 steady-state inferences collected
+      // Remove this block after testing is complete
+      // ============================================================
+      if (_pt01WarmUpCount < 10) {
+        _pt01WarmUpCount++;
+      } else if (_pt01SampleCount < 30) {
+        _pt01Watch.stop();
+        _pt01Latencies.add(_pt01Watch.elapsedMicroseconds / 1000.0);
+        _pt01SampleCount++;
+        if (_pt01SampleCount == 30) {
+          final mean =
+              _pt01Latencies.reduce((a, b) => a + b) / _pt01Latencies.length;
+          debugPrint(
+            '[PT-01] Mean latency (steady-state, after 10 warm-up): '
+            '${mean.toStringAsFixed(2)} ms '
+            '(samples: ${_pt01Latencies.map((v) => v.toStringAsFixed(1)).toList()})',
+          );
+        }
+      }
+      // ============================================================
+      // PERFORMANCE TEST [PT-01] — END
+      // ============================================================
+
+      // ============================================================
+      // PERFORMANCE TEST [PT-02] — START
+      // Purpose: Count inferences over 60 s and log throughput (FPS)
+      // Remove this block after testing is complete
+      // ============================================================
+      if (_pt02WarmUpCount < 10) {
+        _pt02WarmUpCount++;
+      } else {
+        _pt02WindowStart ??= DateTime.now();
+        _pt02FrameCount++;
+        final pt02Elapsed =
+            DateTime.now().difference(_pt02WindowStart!).inSeconds;
+        if (pt02Elapsed >= 60) {
+          final fps = _pt02FrameCount / 60.0;
+          debugPrint(
+            '[PT-02] Throughput (steady-state, after 10 warm-up): '
+            '${fps.toStringAsFixed(2)} FPS '
+            '(total inferences: $_pt02FrameCount over ${pt02Elapsed}s)',
+          );
+          _pt02FrameCount = 0;
+          _pt02WindowStart = DateTime.now();
+        }
+      }
+      // ============================================================
+      // PERFORMANCE TEST [PT-02] — END
+      // ============================================================
 
       // 7. Flatten output for the decoder
       int outIdx = 0;
@@ -616,10 +705,8 @@ class CameraController extends ChangeNotifier {
     }
   }
 
-  /// Bottom-left: replay the last spoken instruction.
-  /// If no AI instruction has been spoken yet, falls back to camera intro.
   /// Bottom-left: replay the last spoken AI instruction.
-  /// If no AI instruction has been played yet, falls back to camera intro.
+  /// Falls back to the camera intro if no AI instruction has played yet.
   Future<void> onReplayInstructionsTap() async {
     debugPrint('👆 onReplayInstructionsTap');
 

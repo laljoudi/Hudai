@@ -42,7 +42,7 @@ class YoloConfig {
   // ── Detection thresholds ─────────────────────────────────────────────
   /// Minimum confidence to keep a detection.
   /// Detections below this are discarded.
-  /// 0.5 = 50% confident.
+  /// 0.15 = 15% confident.
   static const double confidenceThreshold = 0.15;
 
   /// IoU (Intersection over Union) threshold for NMS.

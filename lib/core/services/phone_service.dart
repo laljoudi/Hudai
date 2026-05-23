@@ -53,12 +53,12 @@ class PhoneService {
   String _normalizeNumber(String number) {
     final normalized = number.replaceAll(RegExp(r'[^\d]'), '');
 
-    // لازم يبدأ بـ 05
+    // Must start with the Saudi mobile prefix "05".
     if (!normalized.startsWith('05')) {
       return '';
     }
 
-    // لازم 10 أرقام
+    // Must be exactly 10 digits.
     if (normalized.length != 10) {
       return '';
     }

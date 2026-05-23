@@ -1,6 +1,6 @@
 import 'package:geolocator/geolocator.dart';
 import 'package:gp_hudai/core/constants/location_constants.dart';
-import 'package:gp_hudai/core/services/location_service.dart';
+import 'package:gp_hudai/core/services/location/location_service.dart';
 
 /// Demo mode for testing location audio from anywhere.
 ///

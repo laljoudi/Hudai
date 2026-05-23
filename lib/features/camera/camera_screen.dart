@@ -8,7 +8,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:gp_hudai/app/app_routes.dart';
 import 'package:gp_hudai/core/models/detection.dart';
 import 'package:gp_hudai/features/camera/camera_controller.dart';
-import 'package:gp_hudai/widgets/detection_overlay.dart';
+import 'package:gp_hudai/features/camera/detection_overlay.dart';
 
 /// Camera screen — UI only.
 ///
@@ -203,7 +203,7 @@ class _CameraScreenState extends State<CameraScreen> {
             const Icon(Icons.videocam_off, color: Colors.white38, size: 52),
             const SizedBox(height: 14),
             Text(
-              _controller.cameraError ?? '.',  // ← Arabic placeholder
+              _controller.cameraError ?? '.',
               style: const TextStyle(color: Colors.white60, fontSize: 15),
               textAlign: TextAlign.center,
             ),

@@ -4,6 +4,7 @@ import 'package:gp_hudai/core/constants/yolo_config.dart';
 import 'dart:async';
 import 'dart:io' show Platform;
 
+
 /// Wraps the TensorFlow Lite interpreter for the YOLO Hajj model.
 ///
 /// Responsibilities:

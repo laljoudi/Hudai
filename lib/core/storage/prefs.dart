@@ -1,27 +1,23 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class Prefs {
   Prefs._();
 
-  // اسم المفتاح الذي نخزن تحته رقم الطوارئ.
+  static const _storage = FlutterSecureStorage();
+
+  // Key used to store the emergency number in secure storage.
   static const String emergencyNumberKey = 'emergency_number';
 
   static Future<void> saveEmergencyNumber(String number) async {
-    // فتح التخزين المحلي.
-    final prefs = await SharedPreferences.getInstance();
-    // حفظ الرقم كنص.
-    await prefs.setString(emergencyNumberKey, number);
+    await _storage.write(key: emergencyNumberKey, value: number);
   }
 
   static Future<String?> getEmergencyNumber() async {
-    // فتح التخزين المحلي.
-    final prefs = await SharedPreferences.getInstance();
-    // قراءة الرقم إذا كان موجودًا.
-    return prefs.getString(emergencyNumberKey);
+    return await _storage.read(key: emergencyNumberKey);
   }
 
   static Future<bool> hasEmergencyNumber() async {
-    // جلب الرقم ثم التأكد أنه غير فارغ.
     final number = await getEmergencyNumber();
     return number != null && number.trim().isNotEmpty;
   }
@@ -33,7 +29,8 @@ class Prefs {
     if (number == null) return false;
     return RegExp(r'^05\d{8}$').hasMatch(number.trim());
   }
-    // ── Camera intro audio (plays once on first visit) ────────────────────────
+
+  // ── Camera intro audio (plays once on first visit) ────────────────────────
   static const String cameraIntroHeardKey = 'camera_intro_heard';
 
   static Future<bool> hasHeardCameraIntro() async {
@@ -45,8 +42,4 @@ class Prefs {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(cameraIntroHeardKey, true);
   }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> ba049d2 (تحديثات بشكل عام)

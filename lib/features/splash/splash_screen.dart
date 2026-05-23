@@ -2,6 +2,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:gp_hudai/app/app_routes.dart';
 import 'package:gp_hudai/core/storage/prefs.dart';
+// ============================================================
+// PERFORMANCE TEST [PT-03] — START
+// Purpose: Import PerfMarkers to start the post-splash stopwatch
+// Remove this block after testing is complete
+// ============================================================
+import 'package:gp_hudai/core/utils/perf_markers.dart';
+// ============================================================
+// PERFORMANCE TEST [PT-03] — END
+// ============================================================
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -132,6 +141,16 @@ class _SplashScreenState extends State<SplashScreen>
 
     final route = hasSaved ? AppRoutes.camera : AppRoutes.voiceInstructions;
     debugPrint('🧭 splash → $route (hasSavedNumber=$hasSaved)');
+    // ============================================================
+    // PERFORMANCE TEST [PT-03] — START
+    // Purpose: Mark splash dismissal so post-splash init time can be measured
+    // Remove this block after testing is complete
+    // ============================================================
+    PerfMarkers.postSplashWatch.start();
+    debugPrint('[PT-03] Splash dismissed — stopwatch started');
+    // ============================================================
+    // PERFORMANCE TEST [PT-03] — END
+    // ============================================================
     Navigator.pushReplacementNamed(context, route);
   }
 

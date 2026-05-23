@@ -1,4 +1,4 @@
-// lib/core/services/audio_service.dart
+// lib/core/services/audio/audio_service.dart
 //
 // Responsibilities:
 //   1. Map every audio key (from AudioKeys) to its actual file path in assets.
@@ -29,7 +29,16 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:collection';
 
-import '../constants/audio_keys.dart';
+import '../../constants/audio_keys.dart';
+// ============================================================
+// PERFORMANCE TEST [PT-03] [PT-04] — START
+// Purpose: Import PerfMarkers for post-splash and audio-response measurement
+// Remove this block after testing is complete
+// ============================================================
+import '../../utils/perf_markers.dart';
+// ============================================================
+// PERFORMANCE TEST [PT-03] [PT-04] — END
+// ============================================================
 
 class AudioService {
   AudioService() : _player = AudioPlayer() {
@@ -42,6 +51,16 @@ class AudioService {
   int _interruptToken = 0;
   String? _lastPlayedPath;
   int _lastPlayedAtMs = 0;
+  // ============================================================
+  // PERFORMANCE TEST [PT-04] — START
+  // Purpose: Hold the latency tracker until audio physically starts
+  // Remove this block after testing is complete
+  // ============================================================
+  Stopwatch? _pt04PendingTracker;
+  int _pt04WarmUpCount = 0;   // first 2 readings are skipped
+  // ============================================================
+  // PERFORMANCE TEST [PT-04] — END
+  // ============================================================
 
   String? get lastPlayedPath => _lastPlayedPath;
   int get lastPlayedAtMs => _lastPlayedAtMs;
@@ -56,16 +75,6 @@ class AudioService {
   }
 
   // ── Asset map: key → file path ───────────────────────────────────
-  //
-  // 👇 THIS IS WHERE YOU SET YOUR AUDIO FILE PATHS.
-  //
-  // Change the right-hand side of each entry to match the actual
-  // filename of your audio clip inside assets/.
-  //
-  // Example:
-  //   AudioKeys.personAhead: 'audio/detection/safety/person_ahead.mp3',
-  //                                                   ^^^^^^^^^^^^^^^^
-  //                                              ← change this part only
 
   static const Map<String, String> _assetMap = {
     // ── Priority 1 · Safety ──────────────────────────────────────
@@ -107,7 +116,12 @@ class AudioService {
   /// Queues and plays the audio clip mapped to [key].
   ///
   /// Playback is serialized to prevent overlapping voices.
-  void play(String key) {
+  ///
+  /// [perfTracker] is an optional stopwatch started at the detection trigger
+  /// point; it is stopped the moment playback physically begins so that
+  /// end-to-end audio response latency can be measured (PT-04).
+  /// All existing callers omit this parameter — default is null.
+  void play(String key, {Stopwatch? perfTracker}) {
     final path = _assetMap[key];
 
     if (path == null) {
@@ -120,6 +134,16 @@ class AudioService {
       return;
     }
 
+    // ============================================================
+    // PERFORMANCE TEST [PT-04] — START
+    // Purpose: Store the tracker so _safePlayAndWait can stop it at playback
+    // Remove this block after testing is complete
+    // ============================================================
+    if (perfTracker != null) _pt04PendingTracker = perfTracker;
+    // ============================================================
+    // PERFORMANCE TEST [PT-04] — END
+    // ============================================================
+
     _queue.add(path);
     _drainQueue();
     debugPrint('AudioService: 🔊 $key → $path');
@@ -130,6 +154,16 @@ class AudioService {
   Future<void> playAssetNow(String path) async {
     _interruptToken++;
     _queue.clear();
+    // ============================================================
+    // PERFORMANCE TEST [PT-04] — START
+    // Purpose: Discard any pending tracker so automatic audio (intro,
+    //          permission-denied, location) is never measured by PT-04
+    // Remove this block after testing is complete
+    // ============================================================
+    _pt04PendingTracker = null;
+    // ============================================================
+    // PERFORMANCE TEST [PT-04] — END
+    // ============================================================
     await _player.stop();
     await _safePlayAndWait(path, token: _interruptToken);
   }
@@ -153,6 +187,43 @@ class AudioService {
       if (token != _interruptToken) return;
       _lastPlayedPath = path;
       _lastPlayedAtMs = DateTime.now().millisecondsSinceEpoch;
+      // ============================================================
+      // PERFORMANCE TEST [PT-03] — START
+      // Purpose: Stop the post-splash stopwatch on the very first audio play
+      // Remove this block after testing is complete
+      // ============================================================
+      if (!PerfMarkers.firstAudioPlayed &&
+          PerfMarkers.postSplashWatch.isRunning) {
+        PerfMarkers.postSplashWatch.stop();
+        PerfMarkers.firstAudioPlayed = true;
+        debugPrint(
+          '[PT-03] Post-splash init: '
+          '${PerfMarkers.postSplashWatch.elapsedMilliseconds} ms',
+        );
+      }
+      // ============================================================
+      // PERFORMANCE TEST [PT-03] — END
+      // ============================================================
+      // ============================================================
+      // PERFORMANCE TEST [PT-04] — START
+      // Purpose: Log time from detection trigger to audio playback start
+      // Remove this block after testing is complete
+      // ============================================================
+      final pt04 = _pt04PendingTracker;
+      if (pt04 != null) {
+        pt04.stop();
+        _pt04PendingTracker = null;
+        if (_pt04WarmUpCount < 2) {
+          _pt04WarmUpCount++;   // skip first 2 readings (warm-up audio events)
+        } else if (pt04.elapsedMilliseconds > 0) {
+          debugPrint(
+            '[PT-04] Audio response (post-warm-up): ${pt04.elapsedMilliseconds} ms',
+          );
+        }
+      }
+      // ============================================================
+      // PERFORMANCE TEST [PT-04] — END
+      // ============================================================
       await _player.play(AssetSource(path));
       final duration = await _player.getDuration();
       final wait = (duration == null || duration <= Duration.zero)

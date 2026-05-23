@@ -112,8 +112,8 @@ class SetupController extends ChangeNotifier {
     await _playAndWait(_SetupAudio.intro);
     if (_disposed) return;
 
-    // طلب إذن الميكروفون + التعرف على الكلام عند فتح شاشة التسجيل
-    // حتى لا يتفاجأ المستخدم لاحقًا وقت بدء الإدخال الصوتي.
+    // Request permissions at screen open so the system prompt does not
+    // interrupt the user later when they start the voice flow.
     final granted = await _ensureVoicePermissions();
     if (_disposed) return;
 

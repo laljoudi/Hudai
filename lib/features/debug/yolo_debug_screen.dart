@@ -6,11 +6,11 @@ import 'package:image/image.dart' as img;
 
 import 'package:gp_hudai/core/constants/yolo_config.dart';
 import 'package:gp_hudai/core/models/detection.dart';
-import 'package:gp_hudai/core/services/audio_service.dart';
-import 'package:gp_hudai/core/services/detection_decoder.dart';
-import 'package:gp_hudai/core/services/detection_to_scene_adapter.dart';
-import 'package:gp_hudai/core/services/scene_service.dart';
-import 'package:gp_hudai/core/services/yolo_service.dart';
+import 'package:gp_hudai/core/services/audio/audio_service.dart';
+import 'package:gp_hudai/core/services/ai/detection_decoder.dart';
+import 'package:gp_hudai/core/services/ai/detection_to_scene_adapter.dart';
+import 'package:gp_hudai/core/services/audio/scene_service.dart';
+import 'package:gp_hudai/core/services/ai/yolo_service.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
 /// A debug screen that runs the YOLO pipeline + audio on static test images.
@@ -34,7 +34,6 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
   final DetectionDecoder           _decoder     = const DetectionDecoder();
   final DetectionToSceneAdapter    _adapter     = const DetectionToSceneAdapter();
 
-  // Audio pipeline (from colleague)
   late final AudioService _audioService;
   late final SceneService _sceneService;
 
