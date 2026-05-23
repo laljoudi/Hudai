@@ -1,4 +1,4 @@
-# Hudai — هدي
+# Hudai — هُداي
 ### AI-Powered Hajj Navigation for Visually Impaired Pilgrims
 
 Hudai is a Flutter mobile application that guides visually impaired pilgrims through the Hajj journey using real-time AI scene detection, spoken Arabic audio instructions, and GPS-based arrival confirmation — with no screen interaction required during use.
