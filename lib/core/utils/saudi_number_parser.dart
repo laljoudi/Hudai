@@ -1,11 +1,12 @@
-/// Public utility functions that parse Arabic spoken digit words and
-/// Eastern Arabic numerals (٠–٩) into Western digits, and normalise
-/// Saudi mobile-number prefixes (+966 / 00966 / 966) into the canonical
-/// 05xxxxxxxx form.
-///
-/// The same logic is currently embedded as private top-level helpers in
-/// both [setup_controller.dart] and [settings_emergency_controller.dart].
-/// This file mirrors that logic verbatim so it can be unit-tested.
+// Public utility functions that parse Arabic spoken digit words and
+// Eastern Arabic numerals (٠–٩) into Western digits, and normalise
+// Saudi mobile-number prefixes (+966 / 00966 / 966) into the canonical
+// 05xxxxxxxx form.
+//
+// The same logic is currently embedded as private top-level helpers in
+// both setup_controller.dart and settings_emergency_controller.dart.
+// This file mirrors that logic so it can be unit-tested, and is also the
+// source the manual-entry validation now delegates to.
 
 /// Converts a string of Arabic spoken digit words and/or Eastern Arabic
 /// numerals (٠–٩) into a string of Western digits, then normalises any
@@ -97,4 +98,53 @@ String normalizeSaudiNumber(String d) {
   }
 
   return d;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Manual emergency-number entry: Arabic-numeral normalisation + validation.
+//
+//  Used by the manual (keyboard) entry path of both the Setup and the
+//  Settings → Edit Emergency Number screens. Unlike [normalizeSaudiNumber],
+//  these helpers do NOT strip country codes or add a leading zero — manual
+//  entry is held to the strict 05XXXXXXXX rule. Their job beyond that strict
+//  check is to accept Eastern Arabic (٠–٩) and Persian/Urdu (۰–۹) numerals,
+//  which a user may type on an Arabic keyboard.
+//
+//  NOTE: the original controller logic used `replaceAll(RegExp(r'[^\d]'), '')`.
+//  In Dart, `\d` matches ASCII [0-9] ONLY, so Eastern Arabic numerals were
+//  treated as non-digits and stripped to an empty string — making a perfectly
+//  valid Arabic-typed number fail validation. These helpers fix that.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Converts Eastern Arabic-Indic (٠–٩, U+0660–U+0669) and Extended
+/// Arabic-Indic / Persian-Urdu (۰–۹, U+06F0–U+06F9) numerals to their ASCII
+/// equivalents. Every other character is passed through unchanged.
+String normalizeArabicDigits(String input) {
+  if (input.isEmpty) return input;
+  final buffer = StringBuffer();
+  for (final code in input.runes) {
+    if (code >= 0x0660 && code <= 0x0669) {
+      buffer.write(code - 0x0660); // ٠–٩
+    } else if (code >= 0x06F0 && code <= 0x06F9) {
+      buffer.write(code - 0x06F0); // ۰–۹
+    } else {
+      buffer.writeCharCode(code);
+    }
+  }
+  return buffer.toString();
+}
+
+/// Normalises Arabic numerals, trims, and strips every non-digit character
+/// (spaces, symbols, letters), returning the bare digit string. Returns ""
+/// for null/blank input.
+String extractEmergencyDigits(String? raw) {
+  final normalized = normalizeArabicDigits((raw ?? '').trim());
+  return normalized.replaceAll(RegExp(r'[^0-9]'), '');
+}
+
+/// True when [raw] resolves to a canonical Saudi mobile number: exactly
+/// 10 digits beginning with "05" (after Arabic-numeral normalisation and
+/// non-digit stripping).
+bool isValidEmergencyNumber(String? raw) {
+  return RegExp(r'^05\d{8}$').hasMatch(extractEmergencyDigits(raw));
 }
