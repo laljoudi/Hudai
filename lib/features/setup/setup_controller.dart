@@ -6,6 +6,8 @@ import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import 'package:gp_hudai/core/storage/prefs.dart';
+import 'package:gp_hudai/core/utils/saudi_number_parser.dart'
+    show extractEmergencyDigits, isValidEmergencyNumber;
 
 /// Audio file paths used by the setup screen.
 /// Note: audioplayers uses paths WITHOUT the 'assets/' prefix.
@@ -456,8 +458,9 @@ class SetupController extends ChangeNotifier {
   String? validateManualNumber(String? value) {
     final input = (value ?? '').trim();
     if (input.isEmpty) return 'الرجاء إدخال رقم الطوارئ';
-    final digits = input.replaceAll(RegExp(r'[^\d]'), '');
-    if (!_isValidNumber(digits)) {
+    // Normalise Arabic numerals first so a number typed on an Arabic
+    // keyboard (٠٥٠…) is accepted, not silently stripped to empty.
+    if (!isValidEmergencyNumber(input)) {
       return 'يجب أن يبدأ الرقم بـ 05 ويتكون من 10 أرقام';
     }
     return null;
@@ -466,7 +469,8 @@ class SetupController extends ChangeNotifier {
   /// Manual save — fully silent.
   Future<bool> saveManualNumber(String rawNumber) async {
     if (_stage == SetupStage.saving) return false;
-    final digits = rawNumber.replaceAll(RegExp(r'[^\d]'), '');
+    // Normalise Arabic numerals before stripping non-digits + validating.
+    final digits = extractEmergencyDigits(rawNumber);
     if (!_isValidNumber(digits)) return false;
     _setStage(SetupStage.saving);
     try {
