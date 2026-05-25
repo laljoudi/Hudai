@@ -1,10 +1,10 @@
 // flutter test test/unit/prefs_test.dart
 //
-// Test cases covered in this file (matching the testing report):
-//   UN-4: Prefs.hasValidEmergencyNumber() returns true ONLY when the
-//         stored value matches ^05\d{8}$.
-//   UN-5: Prefs.saveEmergencyNumber() persists the value, and a
-//         subsequent Prefs.getEmergencyNumber() returns the same value.
+// Test cases (matching the testing report — 2 tests):
+//   UN-10: Prefs.hasValidEmergencyNumber() returns true ONLY when the
+//          stored value matches ^05\d{8}$.
+//   UN-11: Prefs.saveEmergencyNumber() persists the value, and a
+//          subsequent Prefs.getEmergencyNumber() returns the same value.
 //
 // The emergency number is stored in `flutter_secure_storage`, NOT in
 // SharedPreferences. flutter_secure_storage does not ship with a built-in
@@ -17,15 +17,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gp_hudai/core/storage/prefs.dart';
 
 void main() {
-  // Required so that the method-channel mocking infrastructure is set up.
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  // Channel name used by flutter_secure_storage on all platforms.
   const MethodChannel secureStorageChannel = MethodChannel(
     'plugins.it_nomads.com/flutter_secure_storage',
   );
 
-  // In-memory backing store the mock handler reads/writes against.
   final Map<String, String> store = <String, String>{};
 
   setUp(() {
@@ -73,38 +70,34 @@ void main() {
         .setMockMethodCallHandler(secureStorageChannel, null);
   });
 
-  // ────────────────────────────────────────────────────────────────────
-  // UN-4 — Emergency-number validity check
-  // ────────────────────────────────────────────────────────────────────
-  group('UN-4 Prefs.hasValidEmergencyNumber()', () {
-    test('Step 1: "0501234567" → true', () async {
+  // UN-10 ───────────────────────────────────────────────────────────────
+  test(
+    'UN-10: hasValidEmergencyNumber() returns true ONLY for ^05\\d{8}\$',
+    () async {
+      // Step 1 — valid 10-digit Saudi mobile number
       await Prefs.saveEmergencyNumber('0501234567');
       expect(await Prefs.hasValidEmergencyNumber(), isTrue);
-    });
 
-    test('Step 2: "0612345678" → false (wrong prefix)', () async {
+      // Step 2 — wrong prefix
       await Prefs.saveEmergencyNumber('0612345678');
       expect(await Prefs.hasValidEmergencyNumber(), isFalse);
-    });
 
-    test('Step 3: "050123" → false (too short)', () async {
+      // Step 3 — too short
       await Prefs.saveEmergencyNumber('050123');
       expect(await Prefs.hasValidEmergencyNumber(), isFalse);
-    });
 
-    test('Step 4: cleared/unset → false', () async {
-      // Nothing was ever written for this test case.
+      // Step 4 — cleared / nothing stored
+      store.clear();
       expect(await Prefs.hasValidEmergencyNumber(), isFalse);
-    });
-  });
+    },
+  );
 
-  // ────────────────────────────────────────────────────────────────────
-  // UN-5 — Save / get round trip
-  // ────────────────────────────────────────────────────────────────────
-  group('UN-5 Prefs.saveEmergencyNumber() persists to secure storage', () {
-    test('A subsequent getEmergencyNumber() returns the saved value', () async {
+  // UN-11 ───────────────────────────────────────────────────────────────
+  test(
+    'UN-11: saveEmergencyNumber() persists; getEmergencyNumber() reads it',
+    () async {
       await Prefs.saveEmergencyNumber('0501234567');
       expect(await Prefs.getEmergencyNumber(), '0501234567');
-    });
-  });
+    },
+  );
 }
