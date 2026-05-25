@@ -1,13 +1,13 @@
 # Hudai — هُداي
 ### AI-Powered Hajj Navigation for Visually Impaired Pilgrims
 
-Hudai is a Flutter mobile application that guides visually impaired pilgrims through the Hajj journey using real-time AI scene detection, spoken Arabic audio instructions, and GPS-based arrival confirmation  with no screen interaction required during use.
+Hudai is a Flutter mobile application that guides visually impaired pilgrims through the Hajj journey using real-time AI scene detection, spoken Arabic audio instructions, and GPS-based arrival confirmation — with no screen interaction required during use.
 
 ---
 
 ## Overview
 
-Pilgrims point their phone camera forward. Hudai continuously analyzes the scene, speaks guidance in Arabic, and alerts the user to crowds, the direction of Jabal Arafah, AR navigation markers, and arrival at the Arafat zone all through audio alone.
+Pilgrims point their phone camera forward. Hudai continuously analyzes the scene, speaks guidance in Arabic, and alerts the user to crowds, the direction of Jabal Arafah, AR navigation markers, and arrival at the Arafat zone — all through audio alone.
 
 The app is designed to be operated entirely by touch zones (four corner buttons, no labels needed) so it remains accessible when vision is limited or unavailable.
 
@@ -41,7 +41,7 @@ The on-device YOLO model (`yolo_hajj.tflite`) detects five classes:
 | `other_mountains` | Mountains other than Jabal Arafah |
 | `crowd` | Dense crowd |
 
-Input: 640 × 640 RGB — Inference rate: 2 FPS (configurable via `YoloConfig.targetFps`)
+Input: 640 x 640 RGB — Inference rate: 2 FPS (configurable via `YoloConfig.targetFps`)
 
 ---
 
@@ -58,7 +58,7 @@ Audio instructions are prioritized so the most urgent message always plays first
 | 5 | Movement Confirmation | Keep walking in the same direction |
 | 6 (lowest) | Distance & Arrival | Entered Arafat zone (GPS-confirmed) |
 
-Per-category cooldowns (5s - 20s) prevent audio flooding between frames.
+Per-category cooldowns (5 s - 20 s) prevent audio flooding between frames.
 
 ---
 
@@ -67,7 +67,7 @@ Per-category cooldowns (5s - 20s) prevent audio flooding between frames.
 | Layer | Library / Tool |
 |---|---|
 | Framework | Flutter (Dart) |
-| AI Inference | `tflite_flutter` YOLO TFLite model |
+| AI Inference | `tflite_flutter` — YOLO TFLite model |
 | Audio Playback | `audioplayers` |
 | Location / GPS | `geolocator`, `geocoding` |
 | Voice Input | `speech_to_text` (Arabic `ar_SA`) |
@@ -95,7 +95,7 @@ lib/
 │   └── utils/              # PerfMarkers (performance instrumentation)
 ├── features/
 │   ├── camera/             # CameraScreen, CameraController, DetectionOverlay
-│   ├── debug/              # YoloDebugScreen (static-image pipeline tester)
+│   ├── debug/              # DemoSwitcher, YoloDebugScreen
 │   ├── onboarding/         # Voice instructions screen
 │   ├── settings/           # Settings screen + emergency number editor
 │   ├── setup/              # First-run voice setup flow
@@ -111,7 +111,7 @@ lib/
 
 - Flutter SDK `^3.8.1`
 - Android SDK (minSdkVersion 21) or Xcode for iOS
-- A physical device is recommended camera and audio do not work reliably on simulators
+- A physical device is recommended — camera and audio do not work reliably on simulators
 
 ### Setup
 
@@ -146,15 +146,15 @@ flutter run
 
 ## Team
 
-**Institution:** Umm Al Qura University 
-**Department:**  Software Engineering
+**Institution:** Umm Al Qura University  
+**Department:** Software Engineering
 
-| Name | 
+| Name |
 |---|
-| Layan Aljoudi | 
-| Haneen Al-Ghamdi | 
-| Wed Al-Alawi  | 
-| Amal Al-Harthi   | 
+| Layan Aljoudi |
+| Haneen Al-Ghamdi |
+| Wed Al-Alawi |
+| Amal Al-Harthi |
 
 ---
 

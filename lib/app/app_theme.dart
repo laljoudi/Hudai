@@ -8,7 +8,7 @@ class AppTheme {
     final base = ThemeData.light(useMaterial3: true);
 
     return base.copyWith(
-      scaffoldBackgroundColor: Colors.white,
+      scaffoldBackgroundColor: AppColors.bg,
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
         brightness: Brightness.light,
@@ -19,8 +19,8 @@ class AppTheme {
       ),
       textTheme: base.textTheme.apply(
         fontFamily: 'IBMPlexSansArabic',
-        bodyColor: Colors.black,
-        displayColor: Colors.black,
+        bodyColor: AppColors.bodyText,
+        displayColor: Colors.white,
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.white,

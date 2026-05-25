@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import 'package:gp_hudai/app/app_routes.dart';
@@ -106,7 +104,7 @@ class _SettingsEmergencyScreenState extends State<SettingsEmergencyScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF030A20),
+      backgroundColor: const Color(0xFF0F2350),
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -141,8 +139,17 @@ class _SettingsEmergencyScreenState extends State<SettingsEmergencyScreen>
             AnimatedBuilder(
               animation: _pulse,
               builder: (_, __) {
-                final t = _controller.isListening ? _pulse.value : 0.0;
-                return _MicOrb(pulse: t, listening: _controller.isListening);
+                final stage = _controller.stage;
+                final isSpeaking = stage == SettingsEmergencyStage.intro ||
+                    stage == SettingsEmergencyStage.confirming;
+                final t = (isSpeaking || _controller.isListening)
+                    ? _pulse.value
+                    : 0.0;
+                return _MicOrb(
+                  pulse: t,
+                  listening: _controller.isListening,
+                  speaking: isSpeaking,
+                );
               },
             ),
             const SizedBox(height: 28),
@@ -212,10 +219,10 @@ class _SettingsEmergencyScreenState extends State<SettingsEmergencyScreen>
             const _AppName(),
             const SizedBox(height: 28),
             Text(
-              'يرجى إدخال رقم هاتف يدويًا.',
+              'يرجى إدخال رقم الهاتف يدويًا',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.55),
+                color: const Color(0xFFC8D8F0),
                 fontSize: 14,
                 height: 1.5,
               ),
@@ -252,10 +259,10 @@ class _Background extends StatelessWidget {
           begin: Alignment.topCenter,
           end:   Alignment.bottomCenter,
           colors: [
-            Color(0xFF030A20),
-            Color(0xFF071540),
-            Color(0xFF0E2360),
-            Color(0xFF1A3A8A),
+            Color(0xFF0F2350),
+            Color(0xFF0F2350),
+            Color(0xFF142D62),
+            Color(0xFF1A3878),
           ],
           stops: [0.0, 0.50, 0.75, 1.0],
         ),
@@ -275,7 +282,7 @@ class _AppName extends StatelessWidget {
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             fontSize: 17,
-            color: Colors.white.withOpacity(0.45),
+            color: const Color(0xFFC8D8F0),
             fontWeight: FontWeight.w400,
             height: 1.0,
           ),
@@ -283,9 +290,15 @@ class _AppName extends StatelessWidget {
   }
 }
 class _MicOrb extends StatelessWidget {
-  const _MicOrb({required this.pulse, required this.listening});
+  const _MicOrb({
+    required this.pulse,
+    required this.listening,
+    this.speaking = false,
+  });
+
   final double pulse;
   final bool   listening;
+  final bool   speaking;
 
   @override
   Widget build(BuildContext context) {
@@ -315,7 +328,46 @@ class _MicOrb extends StatelessWidget {
           ),
         ],
       ),
-      child: const Icon(Icons.mic, color: Colors.white, size: 64),
+      child: Center(
+        child: speaking
+            ? _OrbEqualizerBars(amplitude: pulse)
+            : const Icon(Icons.mic, color: Colors.white, size: 64),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Orb equalizer bars — shown when the app is speaking.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _OrbEqualizerBars extends StatelessWidget {
+  const _OrbEqualizerBars({required this.amplitude});
+
+  final double amplitude;
+
+  static const _phases = [0.60, 1.00, 0.75, 0.90, 0.55];
+  static const _minH   = 10.0;
+  static const _maxH   = 52.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(_phases.length, (i) {
+        final h = _minH + (_maxH - _minH) * amplitude * _phases[i];
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 80),
+          margin: const EdgeInsets.symmetric(horizontal: 3.5),
+          width: 6.0,
+          height: h,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        );
+      }),
     );
   }
 }
@@ -330,9 +382,9 @@ class _NumberChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
+        color: const Color(0xFF0F2350).withOpacity(0.55),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.22)),
+        border: Border.all(color: const Color(0xFF8CBEFF).withOpacity(0.20)),
       ),
       child: Text(
         text,
@@ -394,7 +446,7 @@ class _ProcessingDotsState extends State<_ProcessingDots>
                 height: 8,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: on ? Colors.white : Colors.white.withOpacity(0.20),
+                  color: on ? Colors.white : const Color(0xFF8CBEFF).withOpacity(0.20),
                 ),
               ),
             );
@@ -412,50 +464,40 @@ class _GlassyTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.20)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.12),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F2350).withOpacity(0.55),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF8CBEFF).withOpacity(0.20)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: TextFormField(
+          controller: controller,
+          keyboardType: TextInputType.phone,
+          textAlign: TextAlign.center,
+          cursorColor: const Color(0xFF6AB8FF),
+          validator: validator,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            letterSpacing: 1.2,
+            fontWeight: FontWeight.w500,
           ),
-          child: TextFormField(
-            controller: controller,
-            keyboardType: TextInputType.phone,
-            textAlign: TextAlign.center,
-            cursorColor: const Color(0xFF40E0FF),
-            validator: validator,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              letterSpacing: 1.2,
-              fontWeight: FontWeight.w500,
+          decoration: InputDecoration(
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 22,
+              horizontal: 16,
             ),
-            decoration: InputDecoration(
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                vertical: 22,
-                horizontal: 16,
-              ),
-              hintText: '+966',
-              hintStyle: TextStyle(
-                color: Colors.white.withOpacity(0.30),
-                fontSize: 18,
-              ),
-              errorStyle: const TextStyle(
-                color: Color(0xFFFF8A8A),
-                fontSize: 12,
-              ),
+            hintText: '+966',
+            hintStyle: TextStyle(
+              color: const Color(0xFFC8D8F0).withOpacity(0.50),
+              fontSize: 18,
+            ),
+            errorStyle: const TextStyle(
+              color: Color(0xFFFF8A8A),
+              fontSize: 12,
             ),
           ),
         ),
@@ -477,24 +519,8 @@ class _GlowingSaveButton extends StatelessWidget {
         height: 60,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(40),
-          gradient: const LinearGradient(
-            colors: [Color(0xFF40E0FF), Color(0xFF1855FF)],
-            begin: Alignment.topLeft,
-            end:   Alignment.bottomRight,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF1855FF).withOpacity(0.55),
-              blurRadius: 32,
-              spreadRadius: 1,
-              offset: const Offset(0, 6),
-            ),
-            BoxShadow(
-              color: const Color(0xFF00CFFF).withOpacity(0.30),
-              blurRadius: 60,
-              spreadRadius: 8,
-            ),
-          ],
+          color: const Color(0xFF8CBEFF).withOpacity(0.10),
+          border: Border.all(color: const Color(0xFF8CBEFF).withOpacity(0.25)),
         ),
         child: Center(
           child: saving

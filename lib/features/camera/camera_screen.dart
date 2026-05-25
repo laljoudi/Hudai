@@ -67,7 +67,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF030A20),
+      backgroundColor: const Color(0xFF0F2350),
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -93,7 +93,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     child: IgnorePointer(
                       child: _GlassyButton(
                         icon: Icons.settings,
-                        iconColor: Color(0xFF70F0FF),
+                        iconColor: Colors.white,
                       ),
                     ),
                   ),
@@ -103,7 +103,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     alignment: Alignment.topRight,
                     child: IgnorePointer(
                       child: _GlassyButton(
-                        icon: Icons.call,
+                        icon: Icons.phone_rounded,
                         iconColor: Color(0xFFFF6B6B),
                       ),
                     ),
@@ -115,7 +115,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     child: IgnorePointer(
                       child: _GlassyButton(
                         icon: Icons.replay,
-                        iconColor: Color(0xFF70F0FF),
+                        iconColor: Colors.white,
                       ),
                     ),
                   ),
@@ -126,7 +126,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     child: IgnorePointer(
                       child: _GlassyButton(
                         icon: Icons.location_on,
-                        iconColor: const Color(0xFF70F0FF),
+                        iconColor: Colors.white,
                         busy: _controller.locationBusy,
                       ),
                     ),
@@ -150,14 +150,14 @@ class _CameraScreenState extends State<CameraScreen> {
     final cam = _controller.cameraController;
 
     if (initFuture == null || cam == null) {
-      return const ColoredBox(color: Color(0xFF030A20));
+      return const ColoredBox(color: Color(0xFF0F2350));
     }
 
     return FutureBuilder<void>(
       future: initFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const ColoredBox(color: Color(0xFF030A20));
+          return const ColoredBox(color: Color(0xFF0F2350));
         }
         return _buildFullScreenPreview(
           CameraPreview(cam),
@@ -188,10 +188,10 @@ class _CameraScreenState extends State<CameraScreen> {
           center: Alignment(0.0, 0.0),
           radius: 1.0,
           colors: [
-            Color(0xFF1A3A8A),
-            Color(0xFF0E2360),
-            Color(0xFF071540),
-            Color(0xFF030A20),
+            Color(0xFF1A3878),
+            Color(0xFF142D62),
+            Color(0xFF0F2350),
+            Color(0xFF0F2350),
           ],
           stops: [0.0, 0.30, 0.65, 1.0],
         ),
@@ -200,11 +200,11 @@ class _CameraScreenState extends State<CameraScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.videocam_off, color: Colors.white38, size: 52),
+            Icon(Icons.videocam_off, color: Color(0xFFC8D8F0).withOpacity(0.60), size: 52),
             const SizedBox(height: 14),
             Text(
               _controller.cameraError ?? '.',
-              style: const TextStyle(color: Colors.white60, fontSize: 15),
+              style: const TextStyle(color: const Color(0xFFC8D8F0), fontSize: 15),
               textAlign: TextAlign.center,
             ),
           ],
@@ -299,8 +299,7 @@ class _GlassyButton extends StatelessWidget {
   final Color iconColor;
   final bool busy;
 
-  static const double _size = 68;
-  static const double _radius = 18;
+  static const double _size     = 68;
   static const double _iconSize = 28;
 
   @override
@@ -310,10 +309,10 @@ class _GlassyButton extends StatelessWidget {
       height: _size,
       child: Stack(
         children: [
-          // Outer drop shadow for lift
+          // Outer drop shadow for lift — neutral black only, no color bleed
           Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(_radius),
+              shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.30),
@@ -321,23 +320,17 @@ class _GlassyButton extends StatelessWidget {
                   spreadRadius: -2,
                   offset: const Offset(0, 6),
                 ),
-                BoxShadow(
-                  color: iconColor.withOpacity(0.18),
-                  blurRadius: 18,
-                  spreadRadius: -4,
-                ),
               ],
             ),
           ),
 
-          // Frosted glass body + gradient + highlight + inner glow + rim
-          ClipRRect(
-            borderRadius: BorderRadius.circular(_radius),
+          // Pure frosted-glass body — blur + white gradient + rim, no color tint
+          ClipOval(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
               child: Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(_radius),
+                  shape: BoxShape.circle,
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
@@ -348,79 +341,22 @@ class _GlassyButton extends StatelessWidget {
                     ],
                     stops: const [0.0, 0.45, 1.0],
                   ),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.32),
-                    width: 1.0,
-                  ),
                 ),
-                child: Stack(
-                  children: [
-                    // Top-edge bright gloss highlight
-                    Positioned(
-                      top: 1,
-                      left: 1,
-                      right: 1,
-                      height: _size * 0.45,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(_radius - 2),
-                            topRight: Radius.circular(_radius - 2),
+                child: Center(
+                  child: busy
+                      ? SizedBox(
+                          width: _iconSize,
+                          height: _iconSize,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.4,
+                            color: iconColor,
                           ),
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.white.withOpacity(0.40),
-                              Colors.white.withOpacity(0.0),
-                            ],
-                          ),
+                        )
+                      : Icon(
+                          icon,
+                          color: iconColor,
+                          size: _iconSize,
                         ),
-                      ),
-                    ),
-
-                    // Inner colored glow at the bottom — "lit from inside"
-                    Positioned(
-                      bottom: -10,
-                      left: _size * 0.15,
-                      right: _size * 0.15,
-                      height: _size * 0.45,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            colors: [
-                              iconColor.withOpacity(0.30),
-                              iconColor.withOpacity(0.0),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // Icon
-                    Center(
-                      child: busy
-                          ? SizedBox(
-                              width: _iconSize,
-                              height: _iconSize,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.4,
-                                color: iconColor,
-                              ),
-                            )
-                          : Icon(
-                              icon,
-                              color: iconColor,
-                              size: _iconSize,
-                              shadows: [
-                                Shadow(
-                                  color: iconColor.withOpacity(0.55),
-                                  blurRadius: 10,
-                                ),
-                              ],
-                            ),
-                    ),
-                  ],
                 ),
               ),
             ),

@@ -113,8 +113,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                     AnimatedBuilder(
                       animation: _glowAnim,
                       builder: (_, __) => _SettingsTile(
-                        icon: Icons.phone_in_talk_rounded,
-                        title: 'إعـداد رقـم الطـوارئ',
+                        icon: Icons.edit_rounded,
+                        title: ' رقـم الطـوارئ',
                         currentNumber: _controller.currentNumber,
                         glow: _glowAnim.value,
                         onTap: _onEditEmergencyTap,
@@ -212,65 +212,45 @@ class _SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withOpacity(0.20)),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(
-                    0xFF1855FF,
-                  ).withOpacity(0.20 + 0.15 * glow),
-                  blurRadius: 28,
-                  spreadRadius: 1,
-                ),
-                BoxShadow(
-                  color: const Color(0xFF00CFFF).withOpacity(0.12 * glow),
-                  blurRadius: 45,
-                  spreadRadius: 4,
-                ),
-              ],
-            ),
-            child: Directionality(
-              textDirection: TextDirection.rtl,
-              child: Row(
-                children: [
-                  // Leading glassy icon chip — on the right in RTL
-                  _UnifiedIconBadge(icon: icon, size: 56, iconSize: 28),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withOpacity(0.20)),
+        ),
+        child: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Row(
+            children: [
+              // Leading glassy icon chip — on the right in RTL
+              _UnifiedIconBadge(icon: icon, size: 56, iconSize: 28),
 
-                  const SizedBox(width: 14),
+              const SizedBox(width: 14),
 
-                  // Title + current number (or "not set" hint)
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.2,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        _CurrentNumberLine(number: currentNumber),
-                      ],
+              // Title + current number (or "not set" hint)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.2,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 6),
+                    _CurrentNumberLine(number: currentNumber),
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -289,31 +269,18 @@ class _CurrentNumberLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasNumber = number != null && number!.trim().isNotEmpty;
-    return Row(
-      children: [
-        Text(
-          'الرقـم الحـالـي:',
-          style: TextStyle(color: Colors.white.withOpacity(0.55), fontSize: 13),
-        ),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            hasNumber ? number! : 'غير محفوظ',
-            // Force LTR for the number so digits read left-to-right even
-            // inside an RTL row.
-            textDirection: TextDirection.ltr,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: hasNumber
-                  ? const Color(0xFF40E0FF)
-                  : Colors.white.withOpacity(0.45),
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              letterSpacing: hasNumber ? 1.5 : 0.2,
-            ),
-          ),
-        ),
-      ],
+    return Text(
+      hasNumber ? number! : 'غير محفوظ',
+      textDirection: TextDirection.ltr,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: hasNumber
+            ? const Color(0xFF40E0FF)
+            : Colors.white.withOpacity(0.45),
+        fontSize: 15,
+        fontWeight: FontWeight.w700,
+        letterSpacing: hasNumber ? 1.5 : 0.2,
+      ),
     );
   }
 }
@@ -339,8 +306,7 @@ class _BackBadge extends StatelessWidget {
           alignment: Alignment.topRight,
           child: Padding(
             padding: const EdgeInsets.all(12),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(22),
+            child: ClipOval(
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
                 child: const SizedBox(
@@ -348,7 +314,7 @@ class _BackBadge extends StatelessWidget {
                   height: 64,
                   child: Center(
                     child: _UnifiedIconBadge(
-                      icon: Icons.arrow_forward_ios_rounded,
+                      icon: Icons.arrow_back_ios_rounded,
                       size: 46,
                       iconSize: 22,
                     ),
@@ -363,7 +329,7 @@ class _BackBadge extends StatelessWidget {
   }
 }
 
-/// Unified icon style shared with the camera screen.
+/// Unified glassy circle icon badge.
 class _UnifiedIconBadge extends StatelessWidget {
   const _UnifiedIconBadge({
     required this.icon,
@@ -372,8 +338,8 @@ class _UnifiedIconBadge extends StatelessWidget {
   });
 
   final IconData icon;
-  final double size;
-  final double iconSize;
+  final double   size;
+  final double   iconSize;
 
   @override
   Widget build(BuildContext context) {
@@ -381,25 +347,21 @@ class _UnifiedIconBadge extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
-          width: size,
+          width:  size,
           height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: LinearGradient(
               begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+              end:   Alignment.bottomRight,
               colors: [
                 Colors.white.withOpacity(0.22),
                 const Color(0xFF40E0FF).withOpacity(0.10),
               ],
             ),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.32),
-              width: 1.0,
-            ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF1855FF).withOpacity(0.18),
+                color:      const Color(0xFF1855FF).withOpacity(0.18),
                 blurRadius: 12,
                 spreadRadius: 1,
               ),

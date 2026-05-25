@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import 'package:gp_hudai/app/app_routes.dart';
@@ -116,7 +114,7 @@ class _SetupScreenState extends State<SetupScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF030A20),
+      backgroundColor: const Color(0xFF0F2350),
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -157,17 +155,23 @@ class _SetupScreenState extends State<SetupScreen>
 
             const Spacer(),
 
-            // The mic — always visible, never duplicated, never dimmed.
-            // (Intro stage uses the same rendering as idle so the screen
-            // looks "ready" the moment it opens, while the intro audio
-            // plays in the background.)
+            // Orb — switches content based on what the system is doing:
+            //   • App speaking (intro / confirming) → animated equalizer bars
+            //   • User speaking (listening)          → mic icon with pulse glow
+            //   • Idle / processing                  → mic icon, dim glow
             AnimatedBuilder(
               animation: _pulse,
               builder: (_, __) {
-                final t = _controller.isListening ? _pulse.value : 0.0;
+                final stage = _controller.stage;
+                final isSpeaking = stage == SetupStage.intro ||
+                    stage == SetupStage.confirming;
+                final t = (isSpeaking || _controller.isListening)
+                    ? _pulse.value
+                    : 0.0;
                 return _MicOrb(
                   pulse: t,
                   listening: _controller.isListening,
+                  speaking: isSpeaking,
                 );
               },
             ),
@@ -263,7 +267,7 @@ class _SetupScreenState extends State<SetupScreen>
               'يرجى إدخال رقم هاتف يدويًا',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.55),
+                color: const Color(0xFFC8D8F0),
                 fontSize: 14,
                 height: 1.5,
               ),
@@ -305,10 +309,10 @@ class _Background extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Color(0xFF030A20),
-            Color(0xFF071540),
-            Color(0xFF0E2360),
-            Color(0xFF1A3A8A),
+            Color(0xFF0F2350),
+            Color(0xFF0F2350),
+            Color(0xFF142D62),
+            Color(0xFF1A3878),
           ],
           stops: [0.0, 0.50, 0.75, 1.0],
         ),
@@ -328,7 +332,7 @@ class _AppName extends StatelessWidget {
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             fontSize: 17,
-            color: Colors.white.withOpacity(0.45),
+            color: const Color(0xFFC8D8F0),
             fontWeight: FontWeight.w400,
             height: 1.0,
           ),
@@ -346,14 +350,15 @@ class _MicOrb extends StatelessWidget {
   const _MicOrb({
     required this.pulse,
     required this.listening,
+    this.speaking = false,
   });
 
-  final double pulse;   // 0.0 (resting) ─→ 1.0 (peak of listening pulse)
-  final bool   listening;
+  final double pulse;     // 0.0 (resting) ─→ 1.0 (peak of animation)
+  final bool   listening; // true while STT mic is active
+  final bool   speaking;  // true while the app is playing audio
 
   @override
   Widget build(BuildContext context) {
-    // Base glow when idle, intensified while listening.
     final base = listening ? 0.45 : 0.30;
     final glow = base + pulse * 0.45;
 
@@ -380,7 +385,49 @@ class _MicOrb extends StatelessWidget {
           ),
         ],
       ),
-      child: const Icon(Icons.mic, color: Colors.white, size: 64),
+      child: Center(
+        child: speaking
+            ? _OrbEqualizerBars(amplitude: pulse)
+            : const Icon(Icons.mic, color: Colors.white, size: 64),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Orb equalizer bars — shown when the app is speaking. Sized to fill the
+//  160 × 160 orb. Driven by the same _pulse animation as the glow.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _OrbEqualizerBars extends StatelessWidget {
+  const _OrbEqualizerBars({required this.amplitude});
+
+  final double amplitude;
+
+  // Phase offsets give each bar a different peak height so they don't all
+  // move in lock-step — matches the voice instructions card style.
+  static const _phases = [0.60, 1.00, 0.75, 0.90, 0.55];
+  static const _minH   = 10.0;
+  static const _maxH   = 52.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(_phases.length, (i) {
+        final h = _minH + (_maxH - _minH) * amplitude * _phases[i];
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 80),
+          margin: const EdgeInsets.symmetric(horizontal: 3.5),
+          width: 6.0,
+          height: h,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        );
+      }),
     );
   }
 }
@@ -405,9 +452,9 @@ class _NumberChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
+        color: const Color(0xFF0F2350).withOpacity(0.55),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.22)),
+        border: Border.all(color: const Color(0xFF8CBEFF).withOpacity(0.20)),
       ),
       child: Text(
         text,
@@ -477,7 +524,7 @@ class _ProcessingDotsState extends State<_ProcessingDots>
                   shape: BoxShape.circle,
                   color: on
                       ? Colors.white
-                      : Colors.white.withOpacity(0.20),
+                      : const Color(0xFF8CBEFF).withOpacity(0.20),
                 ),
               ),
             );
@@ -499,50 +546,40 @@ class _GlassyTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.20)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.12),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F2350).withOpacity(0.55),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF8CBEFF).withOpacity(0.20)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: TextFormField(
+          controller: controller,
+          keyboardType: TextInputType.phone,
+          textAlign: TextAlign.center,
+          cursorColor: const Color(0xFF6AB8FF),
+          validator: validator,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            letterSpacing: 1.2,
+            fontWeight: FontWeight.w500,
           ),
-          child: TextFormField(
-            controller: controller,
-            keyboardType: TextInputType.phone,
-            textAlign: TextAlign.center,
-            cursorColor: const Color(0xFF40E0FF),
-            validator: validator,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              letterSpacing: 1.2,
-              fontWeight: FontWeight.w500,
+          decoration: InputDecoration(
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 22,
+              horizontal: 16,
             ),
-            decoration: InputDecoration(
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                vertical: 22,
-                horizontal: 16,
-              ),
-              hintText: '+966',
-              hintStyle: TextStyle(
-                color: Colors.white.withOpacity(0.30),
-                fontSize: 18,
-              ),
-              errorStyle: const TextStyle(
-                color: Color(0xFFFF8A8A),
-                fontSize: 12,
-              ),
+            hintText: '+966',
+            hintStyle: TextStyle(
+              color: const Color(0xFFC8D8F0).withOpacity(0.50),
+              fontSize: 18,
+            ),
+            errorStyle: const TextStyle(
+              color: Color(0xFFFF8A8A),
+              fontSize: 12,
             ),
           ),
         ),
@@ -568,24 +605,8 @@ class _GlowingSaveButton extends StatelessWidget {
         height: 60,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(40),
-          gradient: const LinearGradient(
-            colors: [Color(0xFF40E0FF), Color(0xFF1855FF)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF1855FF).withOpacity(0.55),
-              blurRadius: 32,
-              spreadRadius: 1,
-              offset: const Offset(0, 6),
-            ),
-            BoxShadow(
-              color: const Color(0xFF00CFFF).withOpacity(0.30),
-              blurRadius: 60,
-              spreadRadius: 8,
-            ),
-          ],
+          color: const Color(0xFF8CBEFF).withOpacity(0.10),
+          border: Border.all(color: const Color(0xFF8CBEFF).withOpacity(0.25)),
         ),
         child: Center(
           child: saving

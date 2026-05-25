@@ -139,7 +139,11 @@ class _SplashScreenState extends State<SplashScreen>
     }
     if (!mounted) return;
 
-    final route = hasSaved ? AppRoutes.camera : AppRoutes.voiceInstructions;
+    // ── TEMP: force full onboarding flow for UI review ──────────────
+    // ignore: dead_code
+    const route = AppRoutes.voiceInstructions;
+    // final route = hasSaved ? AppRoutes.camera : AppRoutes.voiceInstructions;
+    // ────────────────────────────────────────────────────────────────
     debugPrint('🧭 splash → $route (hasSavedNumber=$hasSaved)');
     // ============================================================
     // PERFORMANCE TEST [PT-03] — START
@@ -164,10 +168,10 @@ class _SplashScreenState extends State<SplashScreen>
             end: Alignment.bottomCenter,
             stops: [0.0, 0.5, 0.75, 1.0],
             colors: [
-              Color(0xFF030A20),
-              Color(0xFF071540),
-              Color(0xFF0E2360),
-              Color(0xFF1A3A8A),
+              Color(0xFF0F2350),
+              Color(0xFF0F2350),
+              Color(0xFF142D62),
+              Color(0xFF1A3878),
             ],
           ),
         ),
@@ -206,7 +210,7 @@ class _SplashScreenState extends State<SplashScreen>
                     child: const Column(
                       children: [
                         Text(
-                          'هُــداي',
+                          'هُــــداي',
                           textDirection: TextDirection.rtl,
                           style: TextStyle(
                             color: Colors.white,
@@ -215,13 +219,13 @@ class _SplashScreenState extends State<SplashScreen>
                             letterSpacing: 4,
                           ),
                         ),
-                        SizedBox(height: 10),
+                        SizedBox(height: 22),
                         Text(
-                          'هُــداي، هًداك لأداء النسك',
+                          'هُـــداي، هُـداك لأداء الـنـسـك',
                           textDirection: TextDirection.rtl,
                           style: TextStyle(
-                            color: Color(0xBFA0D2FF),
-                            fontSize: 13,
+                            color: const Color(0xFFC8D8F0),
+                            fontSize: 20,
                             letterSpacing: 0.5,
                           ),
                         ),
@@ -239,11 +243,11 @@ class _SplashScreenState extends State<SplashScreen>
               right: 0,
               child: FadeTransition(
                 opacity: _textOpacity,
-                child: const Text(
+                child: Text(
                   'v1.0.0',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Color(0x66FFFFFF),
+                    color: Color(0xFFC8D8F0).withOpacity(0.40),
                     fontSize: 11,
                     letterSpacing: 1,
                   ),

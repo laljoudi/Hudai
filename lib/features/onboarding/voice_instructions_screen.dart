@@ -5,6 +5,21 @@ import 'package:flutter/material.dart';
 import 'package:gp_hudai/app/app_routes.dart';
 import 'package:audioplayers/audioplayers.dart';
 
+// ─── Sentence cue-points ──────────────────────────────────────────────────────
+// Each record: (startMs, arabic text).
+// startMs is derived from silence gaps in the baked amplitude keyframes
+// (60 ms bins). Adjust if the audio is re-recorded.
+const List<(int, String)> _kSentences = [
+  (0,     'مرحبًا بك في هُدَاي.'),
+  (2100,  'تطبيق ذكي يساعدك بإرشادات صوتية واضحة لتتحرك بأمان أثناء رحلتك في الحج.'),
+  (9600,  'سيقوم التطبيق بالتعرّف على المشاهد من حولك، وإرشادك خطوة بخطوة.'),
+  (15300, 'في الخطوة التالية، ستُدخل رقم الطوارئ، ثم تنتقل إلى الصفحة الرئيسية لبدء الاستخدام.'),
+  (22200, 'نتمنى لك حجًّا مبرورًا وسعيًا مشكورًا.'),
+  (26000, 'اضغط في أي مكان على الشاشة للانتقال إلى صفحة إدخال رقم الطوارئ.'),
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 class VoiceInstructionsScreen extends StatefulWidget {
   const VoiceInstructionsScreen({super.key});
 
@@ -35,18 +50,21 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
   // Smoothing coefficients — higher = faster follow, lower = slower.
   // Attack is faster than release so the orb feels responsive on rises
   // but graceful on falls — like breathing, not twitching.
-  static const double _attackCoeff = 0.25;  // ~150ms to track a rise
+  static const double _attackCoeff  = 0.25; // ~150ms to track a rise
   static const double _releaseCoeff = 0.06; // ~600ms to track a fall
 
   // Ticker for audio-driven pulse
-  Timer? _audioTicker;
-  double _smoothedAmplitude = 0.0;
-  bool _isAudioPlaying = false;
+  Timer?  _audioTicker;
+  double  _smoothedAmplitude  = 0.0;
+  bool    _isAudioPlaying     = false;
+
+  // ── Transcript state ──────────────────────────────────────────────────────
+  int _currentSentenceIndex = 0;
 
   late final AnimationController _arc1Ctrl;
   late final AnimationController _arc2Ctrl;
   late final AnimationController _glowCtrl;
-  late final Animation<double> _glowAnim;
+  late final Animation<double>   _glowAnim;
 
   final AudioPlayer _audioPlayer = AudioPlayer();
 
@@ -56,17 +74,17 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
 
     _calmPulseCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 3200),
+      duration: const Duration(milliseconds: 5000),
     )..repeat(reverse: true);
 
-    // Slower arc rotations — feels calmer, more meditative.
+    // Slow arc rotations — feels calm and meditative.
     _arc1Ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 14),
+      duration: const Duration(seconds: 24),
     )..repeat();
     _arc2Ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 20),
+      duration: const Duration(seconds: 36),
     )..repeat();
 
     _glowCtrl = AnimationController(
@@ -94,8 +112,9 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
     }
   }
 
-  /// Poll the audio position at 30Hz, look up the raw amplitude,
-  /// then apply asymmetric attack/release smoothing.
+  /// Poll the audio position at 30 Hz, look up the raw amplitude,
+  /// apply asymmetric attack/release smoothing, then update the
+  /// active sentence index from the cue-point table.
   void _startAudioTicker() {
     _audioTicker?.cancel();
     setState(() => _isAudioPlaying = true);
@@ -104,7 +123,7 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
       (_) async {
         final pos = await _audioPlayer.getCurrentPosition();
         if (pos == null) return;
-        final ms = pos.inMilliseconds;
+        final ms  = pos.inMilliseconds;
         final idx = ms ~/ _binMs;
         double raw;
         if (idx < 0 || idx >= _intensities.length) {
@@ -116,13 +135,27 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
           raw = a + (b - a) * t;
         }
 
-        // Attack/release smoothing — the secret to "good looking" sync.
-        // If new value is higher, move toward it quickly (attack).
-        // If lower, move slowly (release). Standard envelope-follower.
+        // Attack/release smoothing.
         final coeff = raw > _smoothedAmplitude ? _attackCoeff : _releaseCoeff;
         _smoothedAmplitude += (raw - _smoothedAmplitude) * coeff;
 
-        if (mounted) setState(() {});
+        // ── Update sentence index ────────────────────────────────────────
+        int newSentence = 0;
+        for (int i = 0; i < _kSentences.length; i++) {
+          if (ms >= _kSentences[i].$1) {
+            newSentence = i;
+          } else {
+            break;
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            if (newSentence != _currentSentenceIndex) {
+              _currentSentenceIndex = newSentence;
+            }
+          });
+        }
       },
     );
   }
@@ -132,7 +165,7 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
     _audioTicker = null;
     if (mounted) {
       setState(() {
-        _isAudioPlaying = false;
+        _isAudioPlaying    = false;
         _smoothedAmplitude = 0.0;
       });
     }
@@ -166,29 +199,34 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
     Navigator.pushReplacementNamed(context, AppRoutes.setup);
   }
 
+  // ── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final orbDiameter = size.width * 0.62;
+    final size        = MediaQuery.sizeOf(context);
+    // Slightly smaller orb (0.52) so the card fits without scrolling on
+    // most phones; the visual impact is identical at typical screen sizes.
+    final orbDiameter = size.width * 0.52;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF030A20),
+      backgroundColor: const Color(0xFF0F2350),
       body: GestureDetector(
         onTap: _proceed,
         child: Stack(
           fit: StackFit.expand,
           children: [
+            // ── Background ─────────────────────────────────────────────
             const Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+                    end:   Alignment.bottomCenter,
                     colors: [
-                      Color(0xFF030A20),
-                      Color(0xFF071540),
-                      Color(0xFF0E2360),
-                      Color(0xFF1A3A8A),
+                      Color(0xFF0F2350),
+                      Color(0xFF0F2350),
+                      Color(0xFF142D62),
+                      Color(0xFF1A3878),
                     ],
                     stops: [0.0, 0.50, 0.75, 1.0],
                   ),
@@ -196,114 +234,164 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
               ),
             ),
 
-            // ── App name — Arabic only, elongated with tatweel ────────
+            // ── Main content column ────────────────────────────────────
             SafeArea(
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 18),
-                  child: Text(
-                    'هُــــــداي',
-                    textDirection: TextDirection.rtl,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontSize: 17,
-                          color: Colors.white.withOpacity(0.45),
-                          fontWeight: FontWeight.w400,
-                          height: 1.0,
-                        ),
-                  ),
-                ),
-              ),
-            ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                    const SizedBox(height: 18),
 
-            Center(
-              child: AnimatedBuilder(
-                animation: Listenable.merge([
-                  _calmPulseCtrl,
-                  _arc1Ctrl,
-                  _arc2Ctrl,
-                  _glowAnim,
-                ]),
-                builder: (context, _) {
-                  return Transform.scale(
-                    scale: _currentPulseScale(),
-                    child: SizedBox(
-                      width: orbDiameter + 90,
-                      height: orbDiameter + 90,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Opacity(
-                            opacity: _glowAnim.value *
-                                (_isAudioPlaying
-                                    ? (0.18 + 0.15 * _smoothedAmplitude)
-                                    : 0.18),
-                            child: Container(
-                              width: orbDiameter + 80,
-                              height: orbDiameter + 80,
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Color(0x0D70F0FF),
-                                    blurRadius: 80,
-                                    spreadRadius: 8,
-                                  ),
-                                  BoxShadow(
-                                    color: Color(0x0670F0FF),
-                                    blurRadius: 120,
-                                    spreadRadius: 16,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          Transform.rotate(
-                            angle: _arc1Ctrl.value * 2 * math.pi,
-                            child: CustomPaint(
-                              size: Size(orbDiameter + 46, orbDiameter + 46),
-                              painter: _NeonArcPainter(
-                                startAngle: -math.pi * 0.78,
-                                sweepAngle: math.pi * 1.12,
-                                color: const Color(0xFF70F0FF),
-                                strokeWidth: 2.2,
-                                glowWidth: 9.0,
-                              ),
-                            ),
-                          ),
-                          Transform.rotate(
-                            angle: -_arc2Ctrl.value * 2 * math.pi,
-                            child: CustomPaint(
-                              size: Size(orbDiameter + 70, orbDiameter + 70),
-                              painter: _NeonArcPainter(
-                                startAngle: math.pi * 0.18,
-                                sweepAngle: math.pi * 0.82,
-                                color: const Color(0xFF70F0FF),
-                                strokeWidth: 1.6,
-                                glowWidth: 6.5,
-                              ),
-                            ),
-                          ),
-                          _GlassOrb(diameter: orbDiameter),
-                        ],
+                    // Small app-name watermark
+                    Text(
+                      'هُــــــداي',
+                      textDirection: TextDirection.rtl,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontSize: 17,
+                        color: const Color(0xFFC8D8F0),
+                        fontWeight: FontWeight.w400,
+                        height: 1.0,
                       ),
                     ),
-                  );
-                },
+
+                    const SizedBox(height: 20),
+
+                    // ── Animated orb ──────────────────────────────────
+                    AnimatedBuilder(
+                      animation: Listenable.merge([
+                        _calmPulseCtrl,
+                        _arc1Ctrl,
+                        _arc2Ctrl,
+                        _glowAnim,
+                      ]),
+                      builder: (context, _) {
+                        return Transform.scale(
+                          scale: _currentPulseScale(),
+                          child: SizedBox(
+                            width:  orbDiameter + 90,
+                            height: orbDiameter + 90,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                // Outer ambient glow
+                                Opacity(
+                                  opacity: _glowAnim.value *
+                                      (_isAudioPlaying
+                                          ? (0.18 + 0.15 * _smoothedAmplitude)
+                                          : 0.18),
+                                  child: Container(
+                                    width:  orbDiameter + 80,
+                                    height: orbDiameter + 80,
+                                    decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color:       Color(0x0D70F0FF),
+                                          blurRadius:  80,
+                                          spreadRadius: 8,
+                                        ),
+                                        BoxShadow(
+                                          color:       Color(0x0670F0FF),
+                                          blurRadius:  120,
+                                          spreadRadius: 16,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                // Rotating arc 1
+                                Transform.rotate(
+                                  angle: _arc1Ctrl.value * 2 * math.pi,
+                                  child: CustomPaint(
+                                    size: Size(orbDiameter + 46, orbDiameter + 46),
+                                    painter: _NeonArcPainter(
+                                      startAngle:  -math.pi * 0.78,
+                                      sweepAngle:   math.pi * 1.12,
+                                      color:        const Color(0xFF70F0FF),
+                                      strokeWidth:  2.2,
+                                      glowWidth:    9.0,
+                                    ),
+                                  ),
+                                ),
+                                // Rotating arc 2 (counter)
+                                Transform.rotate(
+                                  angle: -_arc2Ctrl.value * 2 * math.pi,
+                                  child: CustomPaint(
+                                    size: Size(orbDiameter + 70, orbDiameter + 70),
+                                    painter: _NeonArcPainter(
+                                      startAngle:  math.pi * 0.18,
+                                      sweepAngle:  math.pi * 0.82,
+                                      color:       const Color(0xFF70F0FF),
+                                      strokeWidth: 1.6,
+                                      glowWidth:   6.5,
+                                    ),
+                                  ),
+                                ),
+                                // Glass orb core
+                                _GlassOrb(diameter: orbDiameter),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+
+                    // Equal space above heading
+                    const Spacer(),
+
+                    // ── Welcome heading ───────────────────────────────
+                    const Text(
+                      'مـرحـبًـا بـك فـي هُــداي',
+                      textDirection: TextDirection.rtl,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color:      Colors.white,
+                        fontSize:   28,
+                        fontWeight: FontWeight.w700,
+                        height:     1.2,
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    Text(
+                      'استمع إلى التعليمات، أو اضغط للتخطي',
+                      textDirection: TextDirection.rtl,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color:    Colors.white.withOpacity(0.50),
+                        fontSize: 14,
+                        height:   1.4,
+                      ),
+                    ),
+
+                    // Equal space below heading
+                    const Spacer(),
+
+                    // ── Transcript card — pinned to bottom ────────────
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: _TranscriptCard(
+                        sentence:    _kSentences[_currentSentenceIndex].$2,
+                        isPlaying:   _isAudioPlaying,
+                        amplitude:   _smoothedAmplitude,
+                      ),
+                    ),
+
+                    const SizedBox(height: 28),
+                  ],
+                ),
               ),
-            ),
           ],
         ),
       ),
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────
-  //  Audio amplitude envelope, baked from welcome_instructions.mp3
-  //  Each value is normalized RMS amplitude (0..1) for a 60ms window.
-  //  Total duration: ~31.1s, 519 keyframes.
+  // ─── Baked amplitude envelope ─────────────────────────────────────────────
+  //  Each value is normalised RMS amplitude (0..1) for a 60 ms window.
+  //  Total duration: ~31.1 s, 519 keyframes.
   //  If you re-record the audio, regenerate this list.
-  // ─────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
 
   static const int _binMs = 60;
 
@@ -363,6 +451,119 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
   ];
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Transcript card
+//
+//  Frosted glass card that shows the currently-spoken sentence with a
+//  cross-fade transition between sentences, an amplitude-driven equalizer
+//  bar strip, and a speaking / tap-to-continue badge.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TranscriptCard extends StatelessWidget {
+  const _TranscriptCard({
+    required this.sentence,
+    required this.isPlaying,
+    required this.amplitude,
+  });
+
+  final String sentence;
+  final bool   isPlaying;
+  final double amplitude;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
+      decoration: BoxDecoration(
+        color:        const Color(0xFF0F2350).withOpacity(0.55),
+        borderRadius: BorderRadius.circular(16),
+        border:       Border.all(color: const Color(0xFF8CBEFF).withOpacity(0.20)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Equalizer bars
+          _EqualizerBars(amplitude: amplitude, isPlaying: isPlaying),
+
+          const SizedBox(height: 14),
+
+          // Sentence text with cross-fade on every change
+          AnimatedSwitcher(
+            duration:           const Duration(milliseconds: 380),
+            transitionBuilder: (child, anim) =>
+                FadeTransition(opacity: anim, child: child),
+            child: Text(
+              sentence,
+              key:           ValueKey(sentence),
+              textDirection: TextDirection.rtl,
+              textAlign:     TextAlign.right,
+              style: const TextStyle(
+                color:      Colors.white,
+                fontSize:   16,
+                fontWeight: FontWeight.w500,
+                height:     1.75,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Equalizer bars — 5 vertical bars whose heights track _smoothedAmplitude.
+//  Each bar has a fixed phase multiplier so they don't all pulse in unison.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _EqualizerBars extends StatelessWidget {
+  const _EqualizerBars({required this.amplitude, required this.isPlaying});
+
+  final double amplitude;
+  final bool   isPlaying;
+
+  static const _phases  = [0.60, 1.00, 0.75, 0.90, 0.55];
+  static const _minH    = 4.0;
+  static const _maxH    = 22.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(_phases.length, (i) {
+        final h = isPlaying
+            ? _minH + (_maxH - _minH) * amplitude * _phases[i]
+            : _minH;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 80),
+          margin: const EdgeInsets.symmetric(horizontal: 2.5),
+          width:  3.5,
+          height: h,
+          decoration: BoxDecoration(
+            color:        const Color(0xFF6AB8FF),
+            borderRadius: BorderRadius.circular(2),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Glass orb core
+//
+//  Layers (bottom → top):
+//   1. Outer glow box-shadows  (unified with the mic orb's cyan-blue palette)
+//   2. Radial gradient fill    (bright cyan centre → deep blue edge)
+//   3. Bottom-edge backlight   (cyan caustic)
+//   4. Vignette                (dark rim for depth)
+//   5. Specular bubble         (bright oval at top-left — the 3D effect)
+//   6. Rim highlight           (thin white border)
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _GlassOrb extends StatelessWidget {
   const _GlassOrb({required this.diameter});
   final double diameter;
@@ -370,60 +571,52 @@ class _GlassOrb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: diameter,
+      width:  diameter,
       height: diameter,
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
         boxShadow: [
-          BoxShadow(
-            color: Color(0x991E5FFF),
-            blurRadius: 45,
-            spreadRadius: 5,
-          ),
-          BoxShadow(
-            color: Color(0x4700B8FF),
-            blurRadius: 80,
-            spreadRadius: 12,
-          ),
+          BoxShadow(color: Color(0x991855FF), blurRadius: 45, spreadRadius:  5),
+          BoxShadow(color: Color(0x4740E0FF), blurRadius: 80, spreadRadius: 12),
         ],
       ),
       child: ClipOval(
         child: Stack(
           fit: StackFit.expand,
           children: [
+            // 1. Linear gradient base — same palette as the setup mic orb
             const DecoratedBox(
               decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(-0.18, -0.22),
-                  radius: 1.0,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end:   Alignment.bottomRight,
                   colors: [
-                    Color(0xFF3E82FF),
-                    Color(0xFF1A44CC),
-                    Color(0xFF0A1E88),
-                    Color(0xFF060D52),
+                    Color(0xFF40E0FF), // cyan  — matches setup mic orb
+                    Color(0xFF1855FF), // blue  — matches setup mic orb
                   ],
-                  stops: [0.0, 0.32, 0.65, 1.0],
                 ),
               ),
             ),
+            // 2. Bottom-edge backlight
             Positioned(
               bottom: -diameter * 0.08,
-              left: diameter * 0.12,
-              right: diameter * 0.12,
+              left:   diameter * 0.12,
+              right:  diameter * 0.12,
               child: Container(
                 height: diameter * 0.58,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(diameter),
                   gradient: const RadialGradient(
                     colors: [
-                      Color(0x8000DDFF),
-                      Color(0x380090FF),
-                      Color(0x000090FF),
+                      Color(0x8040E0FF),
+                      Color(0x381855FF),
+                      Color(0x001855FF),
                     ],
                   ),
                 ),
               ),
             ),
+            // 3. Vignette
             DecoratedBox(
               decoration: BoxDecoration(
                 gradient: RadialGradient(
@@ -438,11 +631,30 @@ class _GlassOrb extends StatelessWidget {
                 ),
               ),
             ),
+            // 4. Specular bubble — bright oval at top-left, the main 3D cue.
+            Positioned(
+              top:  diameter * 0.08,
+              left: diameter * 0.13,
+              child: Container(
+                width:  diameter * 0.40,
+                height: diameter * 0.22,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(diameter),
+                  gradient: RadialGradient(
+                    colors: [
+                      Colors.white.withOpacity(0.72),
+                      Colors.white.withOpacity(0.00),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // 5. Rim highlight
             DecoratedBox(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.20),
+                  color: const Color(0xFF8CBEFF).withOpacity(0.20),
                   width: 1.5,
                 ),
               ),
@@ -453,6 +665,10 @@ class _GlassOrb extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Neon arc painter
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _NeonArcPainter extends CustomPainter {
   const _NeonArcPainter({
@@ -465,7 +681,7 @@ class _NeonArcPainter extends CustomPainter {
 
   final double startAngle;
   final double sweepAngle;
-  final Color color;
+  final Color  color;
   final double strokeWidth;
   final double glowWidth;
 
@@ -473,31 +689,33 @@ class _NeonArcPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
     final radius = (size.shortestSide / 2) - glowWidth;
-    final rect = Rect.fromCircle(center: center, radius: radius);
+    final rect   = Rect.fromCircle(center: center, radius: radius);
 
+    // Glow pass
     canvas.drawArc(
       rect,
       startAngle,
       sweepAngle,
       false,
       Paint()
-        ..color = color.withOpacity(0.38)
-        ..style = PaintingStyle.stroke
+        ..color       = color.withOpacity(0.38)
+        ..style       = PaintingStyle.stroke
         ..strokeWidth = glowWidth
-        ..strokeCap = StrokeCap.round
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
+        ..strokeCap   = StrokeCap.round
+        ..maskFilter  = const MaskFilter.blur(BlurStyle.normal, 7),
     );
 
+    // Crisp line pass
     canvas.drawArc(
       rect,
       startAngle,
       sweepAngle,
       false,
       Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
+        ..color       = color
+        ..style       = PaintingStyle.stroke
         ..strokeWidth = strokeWidth
-        ..strokeCap = StrokeCap.round,
+        ..strokeCap   = StrokeCap.round,
     );
   }
 
