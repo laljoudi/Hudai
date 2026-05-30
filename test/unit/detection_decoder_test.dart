@@ -30,7 +30,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:gp_hudai/core/constants/yolo_config.dart';
-import 'package:gp_hudai/core/services/detection_decoder.dart';
+import 'package:gp_hudai/core/services/ai/detection_decoder.dart';
 
 // ── Tensor constants ──────────────────────────────────────────────────────────
 
