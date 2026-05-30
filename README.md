@@ -146,14 +146,15 @@ flutter run
 
 ## Team
 
-**Institution:** <!-- University name -->  
-**Department:** <!-- Department name -->
+**Institution:** Umm Al Qura University 
+**Department:**  Software Engineering
 
-| Name | Role |
-|---|---|
-| <!-- Layan Aljoudi --> | <!-- Role --> |
-| <!-- Name --> | <!-- Role --> |
-| <!-- Name --> | <!-- Role --> |
+| Name | 
+|---|
+| Layan Aljoudi | 
+| Haneen Al-Ghamdi | 
+| Wed Al-Alawi  | 
+| Amal Al-Harthi   | 
 
 ---
 
