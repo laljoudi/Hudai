@@ -1,13 +1,13 @@
-# Hudai — هُداي
+# Hudai - هُداي
 ### AI-Powered Hajj Navigation for Visually Impaired Pilgrims
 
-Hudai is a Flutter mobile application that guides visually impaired pilgrims through the Hajj journey using real-time AI scene detection, spoken Arabic audio instructions, and GPS-based arrival confirmation — with no screen interaction required during use.
+Hudai is a Flutter mobile application that guides visually impaired pilgrims through the Hajj journey using real-time AI scene detection, spoken Arabic audio instructions, and GPS-based arrival confirmation, with no screen interaction required during use.
 
 ---
 
 ## Overview
 
-Pilgrims point their phone camera forward. Hudai continuously analyzes the scene, speaks guidance in Arabic, and alerts the user to crowds, the direction of Jabal Arafah, AR navigation markers, and arrival at the Arafat zone — all through audio alone.
+Pilgrims point their phone camera forward. Hudai continuously analyzes the scene, speaks guidance in Arabic, and alerts the user to crowds, the direction of Jabal Arafah, AR navigation markers, and arrival at the Arafat zone, all through audio alone.
 
 The app is designed to be operated entirely by touch zones (four corner buttons, no labels needed) so it remains accessible when vision is limited or unavailable.
 
@@ -41,7 +41,7 @@ The on-device YOLO model (`yolo_hajj.tflite`) detects five classes:
 | `other_mountains` | Mountains other than Jabal Arafah |
 | `crowd` | Dense crowd |
 
-Input: 640 x 640 RGB — Inference rate: 2 FPS (configurable via `YoloConfig.targetFps`)
+Input: 640 x 640 RGB, inference rate: 2 FPS (configurable via `YoloConfig.targetFps`)
 
 ---
 
@@ -67,12 +67,14 @@ Per-category cooldowns (5 s - 20 s) prevent audio flooding between frames.
 | Layer | Library / Tool |
 |---|---|
 | Framework | Flutter (Dart) |
-| AI Inference | `tflite_flutter` — YOLO TFLite model |
+| AI Inference | `tflite_flutter` / YOLOv8 TFLite model |
 | Audio Playback | `audioplayers` |
 | Location / GPS | `geolocator`, `geocoding` |
 | Voice Input | `speech_to_text` (Arabic `ar_SA`) |
 | Camera | `camera` |
 | Secure Storage | `flutter_secure_storage` |
+| Preferences | `shared_preferences` |
+| Phone Dialer | `flutter_phone_direct_caller` |
 | Screen Wake | `wakelock_plus` |
 | Permissions | `permission_handler` |
 | Fonts | IBM Plex Sans Arabic |
@@ -85,21 +87,23 @@ Per-category cooldowns (5 s - 20 s) prevent audio flooding between frames.
 lib/
 ├── app/                    # Routes, theme, app root
 ├── core/
-│   ├── constants/          # Audio keys, YOLO config, colors, scene map
-│   ├── models/             # Detection, SceneDetection, LandmarkPoint
+│   ├── constants/          # Audio paths, YOLO config, colors, scene map, envelopes
+│   ├── models/             # Detection, SceneDetection, GeoPoint, GeoCircle
 │   ├── services/
 │   │   ├── ai/             # YoloService, DetectionDecoder, Adapter, Preprocessor, Throttler
 │   │   ├── audio/          # AudioService, SceneService
 │   │   └── location/       # LocationService, LocationGuidanceService
-│   ├── storage/            # Prefs (secure storage wrapper)
-│   └── utils/              # PerfMarkers (performance instrumentation)
+│   ├── storage/            # Prefs (SharedPreferences + SecureStorage wrapper)
+│   └── utils/              # PerfMarkers, SaudiNumberParser
 ├── features/
 │   ├── camera/             # CameraScreen, CameraController, DetectionOverlay
-│   ├── debug/              # DemoSwitcher, YoloDebugScreen
+│   ├── debug/              # DemoSwitcher (runtime location mode switcher)
 │   ├── onboarding/         # Voice instructions screen
 │   ├── settings/           # Settings screen + emergency number editor
 │   ├── setup/              # First-run voice setup flow
 │   └── splash/             # Splash screen
+├── shared/
+│   └── widgets/            # Shared UI components (orb, chips, voice text field)
 └── main.dart
 ```
 
@@ -111,7 +115,7 @@ lib/
 
 - Flutter SDK `^3.8.1`
 - Android SDK (minSdkVersion 21) or Xcode for iOS
-- A physical device is recommended — camera and audio do not work reliably on simulators
+- A physical device is strongly recommended; camera and audio do not work reliably on simulators
 
 ### Setup
 
@@ -122,7 +126,7 @@ flutter pub get
 flutter run
 ```
 
-> **Note:** The YOLO model file (`assets/models/yolo_hajj.tflite`) and audio assets must be present before building. They are not committed to the repository due to file size — contact the team for the asset bundle.
+> **Note:** The YOLO model file (`assets/models/yolo_hajj.tflite`) and audio assets must be present before building. They are not committed to the repository due to file size. Contact the team for the asset bundle.
 
 ### Platforms
 
