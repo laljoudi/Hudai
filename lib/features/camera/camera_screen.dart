@@ -6,9 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'package:gp_hudai/app/app_routes.dart';
+import 'package:gp_hudai/core/constants/colors.dart';
 import 'package:gp_hudai/core/models/detection.dart';
+import 'package:gp_hudai/core/widgets/tap_feedback_overlay.dart';
 import 'package:gp_hudai/features/camera/camera_controller.dart';
 import 'package:gp_hudai/features/camera/detection_overlay.dart';
+import 'package:gp_hudai/features/debug/demo_switcher.dart';
 
 /// Camera screen — UI only.
 ///
@@ -67,7 +70,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F2350),
+      backgroundColor: AppColors.bg,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -150,14 +153,14 @@ class _CameraScreenState extends State<CameraScreen> {
     final cam = _controller.cameraController;
 
     if (initFuture == null || cam == null) {
-      return const ColoredBox(color: Color(0xFF0F2350));
+      return const ColoredBox(color: AppColors.bg);
     }
 
     return FutureBuilder<void>(
       future: initFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const ColoredBox(color: Color(0xFF0F2350));
+          return const ColoredBox(color: AppColors.bg);
         }
         return _buildFullScreenPreview(
           CameraPreview(cam),
@@ -190,8 +193,8 @@ class _CameraScreenState extends State<CameraScreen> {
           colors: [
             Color(0xFF1A3878),
             Color(0xFF142D62),
-            Color(0xFF0F2350),
-            Color(0xFF0F2350),
+            AppColors.bg,
+            AppColors.bg,
           ],
           stops: [0.0, 0.30, 0.65, 1.0],
         ),
@@ -200,11 +203,11 @@ class _CameraScreenState extends State<CameraScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.videocam_off, color: Color(0xFFC8D8F0).withOpacity(0.60), size: 52),
+            Icon(Icons.videocam_off, color: AppColors.bodyText.withOpacity(0.60), size: 52),
             const SizedBox(height: 14),
             Text(
               _controller.cameraError ?? '.',
-              style: const TextStyle(color: const Color(0xFFC8D8F0), fontSize: 15),
+              style: const TextStyle(color: AppColors.bodyText, fontSize: 15),
               textAlign: TextAlign.center,
             ),
           ],
@@ -249,7 +252,16 @@ class _CameraScreenState extends State<CameraScreen> {
             ],
           ),
         ),
-        const Expanded(flex: 4, child: IgnorePointer(child: SizedBox.expand())),
+        Expanded(
+          flex: 4,
+          child: TapFeedbackOverlay(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onLongPress: () => showDemoSwitcherModal(context),
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ),
         Expanded(
           flex: 3,
           child: Row(
@@ -267,10 +279,12 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Widget _tapZone({required Function() onTap}) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: () => onTap(),
-      child: const SizedBox.expand(),
+    return TapFeedbackOverlay(
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => onTap(),
+        child: const SizedBox.expand(),
+      ),
     );
   }
 }

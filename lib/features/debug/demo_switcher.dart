@@ -25,13 +25,19 @@ class _DemoLocationSheet extends StatefulWidget {
 class _DemoLocationSheetState extends State<_DemoLocationSheet> {
   late DemoLocationMode _selected;
 
+  /// Subset of DemoLocationMode shown in the demo switcher. The enum itself
+  /// keeps all values (so location_guidance_service.dart's switch stays
+  /// exhaustive); the UI just narrows what the user can pick.
+  static const List<DemoLocationMode> _visibleModes = [
+    DemoLocationMode.off,
+    DemoLocationMode.insideArafatNearJabal,
+    DemoLocationMode.farFromJabal,
+  ];
+
   static const Map<DemoLocationMode, String> _labels = {
     DemoLocationMode.off: 'Off, real GPS',
-    DemoLocationMode.insideArafatNearJabal: 'Inside Arafat, near Jabal',
-    DemoLocationMode.nearNamirah: 'Inside Arafat, near Namirah',
-    DemoLocationMode.mediumFromJabal: 'Inside Arafat, medium distance',
-    DemoLocationMode.farFromJabal: 'Outside Arafat, far from Jabal',
-    DemoLocationMode.lowAccuracy: 'Low-accuracy GPS',
+    DemoLocationMode.insideArafatNearJabal: 'Inside Arafat, near Jabal Arafat',
+    DemoLocationMode.farFromJabal: 'Outside Arafat, far from Jabal Arafat',
   };
 
   @override
@@ -61,7 +67,7 @@ class _DemoLocationSheetState extends State<_DemoLocationSheet> {
                 ),
               ),
             ),
-            ...DemoLocationMode.values.map((mode) {
+            ..._visibleModes.map((mode) {
               final isSelected = mode == _selected;
               return ListTile(
                 dense: true,
@@ -74,7 +80,7 @@ class _DemoLocationSheetState extends State<_DemoLocationSheet> {
                       ? Icons.radio_button_checked
                       : Icons.radio_button_unchecked,
                   color: isSelected
-                      ? AppColors.accentCyan
+                      ? AppColors.audioBars
                       : Colors.white.withValues(alpha: 0.40),
                   size: 20,
                 ),

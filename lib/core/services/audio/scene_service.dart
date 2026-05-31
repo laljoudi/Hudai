@@ -4,7 +4,6 @@
 //   1. Receives per-frame detections → resolves the highest-priority profile.
 //   2. Enforces a per-category cooldown to prevent audio flooding.
 //   3. Plays audio sequences via AudioService.
-//   4. Stores the last played sequence for repeatLastInstruction().
 //
 // ── Cooldown strategy ───────────────────────────────────────────
 //   Safety alerts       →  5 s
@@ -28,7 +27,7 @@ import 'audio_service.dart';
 
 class SceneService {
   SceneService({required AudioService audioService})
-      : _audioService = audioService;
+    : _audioService = audioService;
 
   final AudioService _audioService;
 
@@ -51,16 +50,7 @@ class SceneService {
   /// Timestamp (ms since epoch) of the last play per category.
   final Map<AudioCategory, int> _lastPlayedAt = {};
 
-  // ── Repeat feature ───────────────────────────────────────────────
-
-  /// The full sequence that was last sent to AudioService.
-  /// Null until at least one sequence has been played.
-  List<String>? _lastPlayedSequence;
-  String? _lastPlayedKey;
   bool? _insideCoverage;
-  /// True if there's a previous instruction available to replay.
-  bool get hasLastInstruction =>
-      _lastPlayedSequence != null && _lastPlayedSequence!.isNotEmpty;
 
   /// Injects the latest GPS coverage context (inside/outside Arafat zone).
   ///
@@ -107,15 +97,6 @@ class SceneService {
     final profile = sceneAudioMap[SceneClass.cameraIssue];
     if (profile != null) {
       _tryPlay(profile);
-    }
-  }
-
-  /// Replays only the last played clip.
-  /// Does nothing if no clip has been played yet.
-  void repeatLastInstruction() {
-    final last = _lastPlayedKey;
-    if (last != null && last.isNotEmpty) {
-      _audioService.play(last);
     }
   }
 
@@ -173,10 +154,6 @@ class SceneService {
     for (final key in effectiveSequence) {
       _audioService.play(key);
     }
-
-    // Store an immutable copy for the repeat feature.
-    _lastPlayedSequence = List.unmodifiable(effectiveSequence);
-    _lastPlayedKey = effectiveSequence.last;
 
     debugPrint('SceneService: playing ${effectiveSequence.join(' → ')}');
     return true;

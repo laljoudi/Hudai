@@ -16,6 +16,7 @@ import 'package:gp_hudai/core/services/permission_service.dart';
 import 'package:gp_hudai/core/storage/prefs.dart';
 import 'package:gp_hudai/features/camera/camera_state.dart';
 import 'package:gp_hudai/core/services/audio/audio_service.dart';
+import 'package:gp_hudai/core/services/audio/repeat_instruction_service.dart';
 import 'package:gp_hudai/core/services/audio/scene_service.dart';
 import 'package:gp_hudai/core/services/ai/detection_to_scene_adapter.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
@@ -61,6 +62,7 @@ class CameraController extends ChangeNotifier {
       const LocationGuidanceService();
   final PermissionService _permissionService = const PermissionService();
   final AudioService _audioService = AudioService();
+  late final RepeatInstructionService _repeatInstructionService;
   late final SceneService _sceneService;
   final DetectionToSceneAdapter _adapter = const DetectionToSceneAdapter();
   final PhoneService _phoneService = const PhoneService();
@@ -104,7 +106,7 @@ class CameraController extends ChangeNotifier {
   // Remove this block after testing is complete
   // ============================================================
   final Stopwatch _pt01Watch = Stopwatch();
-  int _pt01WarmUpCount = 0;   // first 10 inferences are skipped
+  int _pt01WarmUpCount = 0; // first 10 inferences are skipped
   int _pt01SampleCount = 0;
   final List<double> _pt01Latencies = [];
   // ============================================================
@@ -116,7 +118,7 @@ class CameraController extends ChangeNotifier {
   // Purpose: Count inferences over a 60-second window for FPS
   // Remove this block after testing is complete
   // ============================================================
-  int _pt02WarmUpCount = 0;   // first 10 inferences are skipped
+  int _pt02WarmUpCount = 0; // first 10 inferences are skipped
   int _pt02FrameCount = 0;
   DateTime? _pt02WindowStart;
   // ============================================================
@@ -134,6 +136,9 @@ class CameraController extends ChangeNotifier {
   /// Initialize everything: camera, AI model, audio intro.
   /// Call once when the screen opens.
   Future<void> initialize() async {
+    _repeatInstructionService = RepeatInstructionService(
+      audioService: _audioService,
+    );
     _sceneService = SceneService(audioService: _audioService);
     debugPrint('🎬 CameraController: initialize()');
 
@@ -177,6 +182,7 @@ class CameraController extends ChangeNotifier {
     }
 
     _yoloService.dispose();
+    _repeatInstructionService.dispose();
     _audioService.dispose();
     _detectionsNotifier.dispose();
     _cameraController?.dispose();
@@ -349,9 +355,11 @@ class CameraController extends ChangeNotifier {
       // Purpose: Start stopwatch before inference (warm-up skipped)
       // Remove this block after testing is complete
       // ============================================================
-      if (_pt01WarmUpCount >= 10 && _pt01SampleCount < 30) _pt01Watch
-        ..reset()
-        ..start();
+      if (_pt01WarmUpCount >= 10 && _pt01SampleCount < 30) {
+        _pt01Watch
+          ..reset()
+          ..start();
+      }
       // ============================================================
       // PERFORMANCE TEST [PT-01] — END
       // ============================================================
@@ -386,7 +394,7 @@ class CameraController extends ChangeNotifier {
 
       // ============================================================
       // PERFORMANCE TEST [PT-02] — START
-      // Purpose: Count inferences over 60 s and log throughput (FPS)
+      // Purpose: Count inferences over a 60-second window for FPS
       // Remove this block after testing is complete
       // ============================================================
       if (_pt02WarmUpCount < 10) {
@@ -394,8 +402,9 @@ class CameraController extends ChangeNotifier {
       } else {
         _pt02WindowStart ??= DateTime.now();
         _pt02FrameCount++;
-        final pt02Elapsed =
-            DateTime.now().difference(_pt02WindowStart!).inSeconds;
+        final pt02Elapsed = DateTime.now()
+            .difference(_pt02WindowStart!)
+            .inSeconds;
         if (pt02Elapsed >= 60) {
           final fps = _pt02FrameCount / 60.0;
           debugPrint(
@@ -705,26 +714,18 @@ class CameraController extends ChangeNotifier {
     }
   }
 
-  /// Bottom-left: replay the last spoken AI instruction.
-  /// Falls back to the camera intro if no AI instruction has played yet.
+  /// Bottom-left: replay the last spoken audio clip.
+  /// Falls back to the camera intro if no audio has played yet.
   Future<void> onReplayInstructionsTap() async {
     debugPrint('👆 onReplayInstructionsTap');
 
-    // Replay the LAST actually played clip globally (system or detection).
-    final lastPath = _audioService.lastPlayedPath;
-    if (lastPath != null && lastPath.isNotEmpty) {
-      debugPrint('🔁 Replaying global last audio clip');
-      await _playAudio(lastPath);
-      return;
-    }
-
-    if (_sceneService.hasLastInstruction) {
-      debugPrint('🔁 Replaying last AI audio clip');
-      await _interruptAllAudio();
-      _sceneService.repeatLastInstruction();
-    } else {
-      debugPrint('🔁 No AI instruction yet — replaying intro');
-      await _playAudio(_CameraAudio.intro);
+    _systemAudioBusy = true;
+    try {
+      await _repeatInstructionService.repeatLast(
+        fallbackPath: _CameraAudio.intro,
+      );
+    } finally {
+      _systemAudioBusy = false;
     }
   }
 

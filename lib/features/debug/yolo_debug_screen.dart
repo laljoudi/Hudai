@@ -28,11 +28,10 @@ class YoloDebugScreen extends StatefulWidget {
 }
 
 class _YoloDebugScreenState extends State<YoloDebugScreen> {
-
   // Pipeline pieces
-  final YoloService                _yoloService = YoloService();
-  final DetectionDecoder           _decoder     = const DetectionDecoder();
-  final DetectionToSceneAdapter    _adapter     = const DetectionToSceneAdapter();
+  final YoloService _yoloService = YoloService();
+  final DetectionDecoder _decoder = const DetectionDecoder();
+  final DetectionToSceneAdapter _adapter = const DetectionToSceneAdapter();
 
   late final AudioService _audioService;
   late final SceneService _sceneService;
@@ -100,12 +99,14 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
         debugPrint('🚨 Failed to decode image');
         return;
       }
-      debugPrint('   Original size: ${originalImage.width}x${originalImage.height}');
+      debugPrint(
+        '   Original size: ${originalImage.width}x${originalImage.height}',
+      );
 
       // 3. Resize to 640×640
       final resized = img.copyResize(
         originalImage,
-        width:  YoloConfig.inputSize,
+        width: YoloConfig.inputSize,
         height: YoloConfig.inputSize,
         interpolation: img.Interpolation.linear,
       );
@@ -150,10 +151,6 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
   void _resetCooldowns() {
     // Stop any currently playing audio
     _audioService.stop();
-    // Note: SceneService doesn't expose a reset, so we recreate it.
-    setState(() {
-      _sceneService.repeatLastInstruction(); // optional safety
-    });
     debugPrint('🔄 Audio stopped');
   }
 
@@ -178,8 +175,12 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
   List<double> _runInference(Float32List input) {
     final interpreter = _yoloService.interpreter!;
 
-    final reshapedInput = input.reshape(
-        [1, YoloConfig.inputSize, YoloConfig.inputSize, 3]);
+    final reshapedInput = input.reshape([
+      1,
+      YoloConfig.inputSize,
+      YoloConfig.inputSize,
+      3,
+    ]);
 
     final outputShape = interpreter.getOutputTensor(0).shape;
     final output = List.generate(
@@ -222,28 +223,31 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
                 children: [
                   CircularProgressIndicator(color: Colors.white),
                   SizedBox(height: 16),
-                  Text('Loading model...', style: TextStyle(color: Colors.white70)),
+                  Text(
+                    'Loading model...',
+                    style: TextStyle(color: Colors.white70),
+                  ),
                 ],
               ),
             )
           : _statusMessage != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      _statusMessage!,
-                      style: const TextStyle(color: Colors.redAccent),
-                    ),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _testImages.length,
-                  itemBuilder: (context, index) {
-                    final path = _testImages[index];
-                    return _buildTestCard(path);
-                  },
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  _statusMessage!,
+                  style: const TextStyle(color: Colors.redAccent),
                 ),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _testImages.length,
+              itemBuilder: (context, index) {
+                final path = _testImages[index];
+                return _buildTestCard(path);
+              },
+            ),
     );
   }
 
@@ -292,7 +296,10 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
                     ),
                   ),
                   SizedBox(width: 12),
-                  Text('Processing...', style: TextStyle(color: Colors.white70)),
+                  Text(
+                    'Processing...',
+                    style: TextStyle(color: Colors.white70),
+                  ),
                 ],
               )
             else if (hasResult)
@@ -346,27 +353,29 @@ class _YoloDebugScreenState extends State<YoloDebugScreen> {
           style: const TextStyle(color: Colors.cyan, fontSize: 13),
         ),
         const SizedBox(height: 6),
-        ...detections.map((d) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                children: [
-                  const Text('✅ ', style: TextStyle(fontSize: 14)),
-                  Expanded(
-                    child: Text(
-                      d.className,
-                      style: const TextStyle(color: Colors.white),
-                    ),
+        ...detections.map(
+          (d) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              children: [
+                const Text('✅ ', style: TextStyle(fontSize: 14)),
+                Expanded(
+                  child: Text(
+                    d.className,
+                    style: const TextStyle(color: Colors.white),
                   ),
-                  Text(
-                    d.confidencePercent,
-                    style: const TextStyle(
-                      color: Colors.greenAccent,
-                      fontWeight: FontWeight.bold,
-                    ),
+                ),
+                Text(
+                  d.confidencePercent,
+                  style: const TextStyle(
+                    color: Colors.greenAccent,
+                    fontWeight: FontWeight.bold,
                   ),
-                ],
-              ),
-            )),
+                ),
+              ],
+            ),
+          ),
+        ),
         const SizedBox(height: 8),
         const Text(
           '🔊 Audio sequence triggered',

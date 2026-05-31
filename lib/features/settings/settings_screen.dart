@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'package:gp_hudai/app/app_routes.dart';
+import 'package:gp_hudai/core/widgets/tap_feedback_overlay.dart';
 import 'package:gp_hudai/features/settings/settings_controller.dart';
 
 /// Settings screen — UI only.
@@ -97,32 +98,35 @@ class _SettingsScreenState extends State<SettingsScreen>
           // Main full-screen tap zone → opens the emergency-edit screen.
           // (Whole area is tappable for blind-user accessibility, but
           // visually it's a normal settings page with an option card.)
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _onEditEmergencyTap,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const SizedBox(height: 18),
-                    const _AppName(),
-                    const SizedBox(height: 72),
+          TapFeedbackOverlay(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _onEditEmergencyTap,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 18),
+                      const _AppName(),
+                      const SizedBox(height: 72),
 
-                    AnimatedBuilder(
-                      animation: _glowAnim,
-                      builder: (_, __) => _SettingsTile(
-                        icon: Icons.edit_rounded,
-                        title: ' رقـم الطـوارئ',
-                        currentNumber: _controller.currentNumber,
-                        glow: _glowAnim.value,
-                        onTap: _onEditEmergencyTap,
+                      AnimatedBuilder(
+                        animation: _glowAnim,
+                        builder: (_, __) => _SettingsTile(
+                          icon: Icons.edit_rounded,
+                          iconColor: Colors.white,
+                          title: ' رقـم الطـوارئ',
+                          currentNumber: _controller.currentNumber,
+                          glow: _glowAnim.value,
+                          onTap: _onEditEmergencyTap,
+                        ),
                       ),
-                    ),
 
-                    const Spacer(),
-                  ],
+                      const Spacer(),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -133,10 +137,12 @@ class _SettingsScreenState extends State<SettingsScreen>
             top: 0,
             right: 0,
             child: SafeArea(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _onBackTap,
-                child: const _BackBadge(),
+              child: TapFeedbackOverlay(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _onBackTap,
+                  child: const _BackBadge(),
+                ),
               ),
             ),
           ),
@@ -183,7 +189,7 @@ class _AppName extends StatelessWidget {
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
         fontSize: 17,
-        color: Colors.white.withOpacity(0.45),
+        color: Colors.white.withValues(alpha: 0.45),
         fontWeight: FontWeight.w400,
         height: 1.0,
       ),
@@ -198,6 +204,7 @@ class _AppName extends StatelessWidget {
 class _SettingsTile extends StatelessWidget {
   const _SettingsTile({
     required this.icon,
+    required this.iconColor,
     required this.title,
     required this.currentNumber,
     required this.glow,
@@ -205,6 +212,7 @@ class _SettingsTile extends StatelessWidget {
   });
 
   final IconData icon;
+  final Color iconColor;
   final String title;
   final String? currentNumber;
   final double glow;
@@ -212,45 +220,47 @@ class _SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-        decoration: BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withOpacity(0.20)),
-        ),
-        child: Directionality(
-          textDirection: TextDirection.rtl,
-          child: Row(
-            children: [
-              // Leading glassy icon chip — on the right in RTL
-              _UnifiedIconBadge(icon: icon, size: 56, iconSize: 28),
+    return TapFeedbackOverlay(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
+          ),
+          child: Directionality(
+            textDirection: TextDirection.rtl,
+            child: Row(
+              children: [
+                // Leading glassy icon chip — on the right in RTL
+                _GlassyCircleButton(icon: icon, iconColor: iconColor),
 
-              const SizedBox(width: 14),
+                const SizedBox(width: 14),
 
-              // Title + current number (or "not set" hint)
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2,
+                // Title + current number (or "not set" hint)
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    _CurrentNumberLine(number: currentNumber),
-                  ],
+                      const SizedBox(height: 6),
+                      _CurrentNumberLine(number: currentNumber),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -276,7 +286,7 @@ class _CurrentNumberLine extends StatelessWidget {
       style: TextStyle(
         color: hasNumber
             ? const Color(0xFF40E0FF)
-            : Colors.white.withOpacity(0.45),
+            : Colors.white.withValues(alpha: 0.45),
         fontSize: 15,
         fontWeight: FontWeight.w700,
         letterSpacing: hasNumber ? 1.5 : 0.2,
@@ -306,20 +316,13 @@ class _BackBadge extends StatelessWidget {
           alignment: Alignment.topRight,
           child: Padding(
             padding: const EdgeInsets.all(12),
-            child: ClipOval(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: const SizedBox(
-                  width: 64,
-                  height: 64,
-                  child: Center(
-                    child: _UnifiedIconBadge(
-                      icon: Icons.arrow_back_ios_rounded,
-                      size: 46,
-                      iconSize: 22,
-                    ),
-                  ),
-                ),
+            child: Transform.translate(
+              // Optical centering for the iOS-style back chevron.
+              offset: const Offset(3, 0),
+              child: const _GlassyCircleButton(
+                icon: Icons.arrow_back_ios_rounded,
+                iconColor: Colors.white,
+                iconSize: 24,
               ),
             ),
           ),
@@ -329,46 +332,64 @@ class _BackBadge extends StatelessWidget {
   }
 }
 
-/// Unified glassy circle icon badge.
-class _UnifiedIconBadge extends StatelessWidget {
-  const _UnifiedIconBadge({
+/// Matches the camera screen's circular glass action buttons.
+class _GlassyCircleButton extends StatelessWidget {
+  const _GlassyCircleButton({
     required this.icon,
-    this.size = 46,
-    this.iconSize = 22,
+    required this.iconColor,
+    this.iconSize = 28,
   });
 
   final IconData icon;
-  final double   size;
-  final double   iconSize;
+  final Color iconColor;
+  final double iconSize;
+
+  static const double _size = 68;
 
   @override
   Widget build(BuildContext context) {
-    return ClipOval(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          width:  size,
-          height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end:   Alignment.bottomRight,
-              colors: [
-                Colors.white.withOpacity(0.22),
-                const Color(0xFF40E0FF).withOpacity(0.10),
+    return SizedBox(
+      width: _size,
+      height: _size,
+      child: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.30),
+                  blurRadius: 16,
+                  spreadRadius: -2,
+                  offset: const Offset(0, 6),
+                ),
               ],
             ),
-            boxShadow: [
-              BoxShadow(
-                color:      const Color(0xFF1855FF).withOpacity(0.18),
-                blurRadius: 12,
-                spreadRadius: 1,
-              ),
-            ],
           ),
-          child: Icon(icon, color: Colors.white, size: iconSize),
-        ),
+          ClipOval(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.28),
+                      Colors.white.withValues(alpha: 0.10),
+                      Colors.white.withValues(alpha: 0.06),
+                    ],
+                    stops: const [0.0, 0.45, 1.0],
+                  ),
+                ),
+                child: Center(
+                  child: Icon(icon, color: iconColor, size: iconSize),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

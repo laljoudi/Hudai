@@ -40,6 +40,8 @@ import '../../utils/perf_markers.dart';
 // PERFORMANCE TEST [PT-03] [PT-04] — END
 // ============================================================
 
+typedef AssetPlaybackStarted = void Function(String path);
+
 class AudioService {
   AudioService() : _player = AudioPlayer() {
     _configure();
@@ -49,21 +51,17 @@ class AudioService {
   final Queue<String> _queue = Queue<String>();
   bool _draining = false;
   int _interruptToken = 0;
-  String? _lastPlayedPath;
-  int _lastPlayedAtMs = 0;
+  AssetPlaybackStarted? onAssetPlaybackStarted;
   // ============================================================
   // PERFORMANCE TEST [PT-04] — START
   // Purpose: Hold the latency tracker until audio physically starts
   // Remove this block after testing is complete
   // ============================================================
   Stopwatch? _pt04PendingTracker;
-  int _pt04WarmUpCount = 0;   // first 2 readings are skipped
+  int _pt04WarmUpCount = 0; // first 2 readings are skipped
   // ============================================================
   // PERFORMANCE TEST [PT-04] — END
   // ============================================================
-
-  String? get lastPlayedPath => _lastPlayedPath;
-  int get lastPlayedAtMs => _lastPlayedAtMs;
 
   Future<void> _configure() async {
     try {
@@ -185,8 +183,7 @@ class AudioService {
   Future<void> _safePlayAndWait(String path, {required int token}) async {
     try {
       if (token != _interruptToken) return;
-      _lastPlayedPath = path;
-      _lastPlayedAtMs = DateTime.now().millisecondsSinceEpoch;
+      onAssetPlaybackStarted?.call(path);
       // ============================================================
       // PERFORMANCE TEST [PT-03] — START
       // Purpose: Stop the post-splash stopwatch on the very first audio play
@@ -214,7 +211,7 @@ class AudioService {
         pt04.stop();
         _pt04PendingTracker = null;
         if (_pt04WarmUpCount < 2) {
-          _pt04WarmUpCount++;   // skip first 2 readings (warm-up audio events)
+          _pt04WarmUpCount++; // skip first 2 readings (warm-up audio events)
         } else if (pt04.elapsedMilliseconds > 0) {
           debugPrint(
             '[PT-04] Audio response (post-warm-up): ${pt04.elapsedMilliseconds} ms',
@@ -244,6 +241,7 @@ class AudioService {
   /// Releases player resources.
   /// Call this in the camera screen's dispose().
   Future<void> dispose() async {
+    onAssetPlaybackStarted = null;
     await _player.dispose();
   }
 }

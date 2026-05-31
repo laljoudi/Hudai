@@ -14,8 +14,8 @@ class HudaiApp extends StatelessWidget {
       theme: AppTheme.light(),
       initialRoute: AppRoutes.splash,
       onGenerateRoute: AppRoutes.onGenerateRoute,
-
       locale: const Locale('ar'),
+      
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

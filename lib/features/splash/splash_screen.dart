@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:gp_hudai/app/app_routes.dart';
+import 'package:gp_hudai/core/constants/colors.dart';
 import 'package:gp_hudai/core/storage/prefs.dart';
 // ============================================================
 // PERFORMANCE TEST [PT-03] — START
@@ -89,7 +90,10 @@ class _SplashScreenState extends State<SplashScreen>
 
     // Navigate after the intro animation. The destination depends on
     // whether a valid emergency number is already saved.
-    _navigateTimer = Timer(const Duration(milliseconds: 6000), _decideNextRoute);
+    _navigateTimer = Timer(
+      const Duration(milliseconds: 6000),
+      _decideNextRoute,
+    );
   }
 
   Future<void> _startSequence() async {
@@ -134,7 +138,9 @@ class _SplashScreenState extends State<SplashScreen>
     try {
       hasSaved = await _hasSavedNumberFuture;
     } catch (e) {
-      debugPrint('🚨 splash: prefs read failed, falling back to onboarding: $e');
+      debugPrint(
+        '🚨 splash: prefs read failed, falling back to onboarding: $e',
+      );
       hasSaved = false;
     }
     if (!mounted) return;
@@ -168,8 +174,8 @@ class _SplashScreenState extends State<SplashScreen>
             end: Alignment.bottomCenter,
             stops: [0.0, 0.5, 0.75, 1.0],
             colors: [
-              Color(0xFF0F2350),
-              Color(0xFF0F2350),
+              AppColors.bg,
+              AppColors.bg,
               Color(0xFF142D62),
               Color(0xFF1A3878),
             ],
@@ -204,7 +210,7 @@ class _SplashScreenState extends State<SplashScreen>
                       },
                     ),
                   ),
-                  const SizedBox(height: 36),
+                  const SizedBox(height: 32),
                   FadeTransition(
                     opacity: _textOpacity,
                     child: const Column(
@@ -216,17 +222,18 @@ class _SplashScreenState extends State<SplashScreen>
                             color: Colors.white,
                             fontSize: 40,
                             fontWeight: FontWeight.w700,
-                            letterSpacing: 4,
+                            height: 1.15,
                           ),
                         ),
-                        SizedBox(height: 22),
+                        SizedBox(height: 14),
                         Text(
-                          'هُـــداي، هُـداك لأداء الـنـسـك',
+                          'هُداي، هُداك لأداء النسك',
                           textDirection: TextDirection.rtl,
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: const Color(0xFFC8D8F0),
+                            color: AppColors.bodyText,
                             fontSize: 20,
-                            letterSpacing: 0.5,
+                            height: 1.35,
                           ),
                         ),
                       ],
@@ -247,7 +254,7 @@ class _SplashScreenState extends State<SplashScreen>
                   'v1.0.0',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Color(0xFFC8D8F0).withOpacity(0.40),
+                    color: AppColors.bodyText.withValues(alpha: 0.40),
                     fontSize: 11,
                     letterSpacing: 1,
                   ),
@@ -299,7 +306,7 @@ class _HdayLogoPainter extends CustomPainter {
   void _drawBody(Canvas canvas) {
     if (bodyOpacity <= 0) return;
     final paint = Paint()
-      ..color = Colors.white.withOpacity(bodyOpacity)
+      ..color = Colors.white.withValues(alpha: bodyOpacity)
       ..style = PaintingStyle.fill;
 
     // Path 1 – main figure

@@ -3,6 +3,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:gp_hudai/app/app_routes.dart';
+import 'package:gp_hudai/core/constants/colors.dart';
+import 'package:gp_hudai/core/widgets/tap_feedback_overlay.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 // ─── Sentence cue-points ──────────────────────────────────────────────────────
@@ -209,8 +211,9 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
     final orbDiameter = size.width * 0.52;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F2350),
-      body: GestureDetector(
+      backgroundColor: AppColors.bg,
+      body: TapFeedbackOverlay(
+        child: GestureDetector(
         onTap: _proceed,
         child: Stack(
           fit: StackFit.expand,
@@ -223,8 +226,8 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
                     begin: Alignment.topCenter,
                     end:   Alignment.bottomCenter,
                     colors: [
-                      Color(0xFF0F2350),
-                      Color(0xFF0F2350),
+                      AppColors.bg,
+                      AppColors.bg,
                       Color(0xFF142D62),
                       Color(0xFF1A3878),
                     ],
@@ -247,7 +250,7 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
                       textDirection: TextDirection.rtl,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontSize: 17,
-                        color: const Color(0xFFC8D8F0),
+                        color: AppColors.bodyText,
                         fontWeight: FontWeight.w400,
                         height: 1.0,
                       ),
@@ -340,7 +343,7 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
 
                     // ── Welcome heading ───────────────────────────────
                     const Text(
-                      'مـرحـبًـا بـك فـي هُــداي',
+                      'مـرحـبـاً بـك فـي هُــداي',
                       textDirection: TextDirection.rtl,
                       textAlign: TextAlign.center,
                       style: TextStyle(
@@ -383,6 +386,7 @@ class _VoiceInstructionsScreenState extends State<VoiceInstructionsScreen>
               ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -476,9 +480,9 @@ class _TranscriptCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
       decoration: BoxDecoration(
-        color:        const Color(0xFF0F2350).withOpacity(0.55),
+        color:        AppColors.bg.withOpacity(0.55),
         borderRadius: BorderRadius.circular(16),
-        border:       Border.all(color: const Color(0xFF8CBEFF).withOpacity(0.20)),
+        border:       Border.all(color: AppColors.borderBase.withOpacity(0.20)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -542,7 +546,7 @@ class _EqualizerBars extends StatelessWidget {
           width:  3.5,
           height: h,
           decoration: BoxDecoration(
-            color:        const Color(0xFF6AB8FF),
+            color:        AppColors.audioBars,
             borderRadius: BorderRadius.circular(2),
           ),
         );
@@ -654,7 +658,7 @@ class _GlassOrb extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: const Color(0xFF8CBEFF).withOpacity(0.20),
+                  color: AppColors.borderBase.withOpacity(0.20),
                   width: 1.5,
                 ),
               ),

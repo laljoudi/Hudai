@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
+import 'package:gp_hudai/core/constants/setup_audio_envelopes.dart';
 import 'package:gp_hudai/core/storage/prefs.dart';
 import 'package:gp_hudai/core/utils/saudi_number_parser.dart'
     show extractEmergencyDigits, isValidEmergencyNumber;
@@ -78,6 +79,14 @@ class SettingsEmergencyController extends ChangeNotifier {
   String get lastParsedDigits       => _lastParsedDigits;
   bool   get shouldNavigate         => _shouldNavigate;
 
+  /// Live amplitude (0..1) for the currently playing setup clip. Driven
+  /// by the pre-baked envelope in SetupAudioEnvelopes plus attack/release
+  /// smoothing so the orb equaliser visually tracks the spoken audio.
+  double get speakingAmplitude => _speakingAmplitude;
+  double _speakingAmplitude = 0.0;
+  List<double>? _currentEnvelope;
+  Timer? _amplitudeTicker;
+
   bool get isManual    => _stage == SettingsEmergencyStage.manual;
   bool get isListening => _stage == SettingsEmergencyStage.listening;
   bool get inputLocked =>
@@ -112,6 +121,7 @@ class SettingsEmergencyController extends ChangeNotifier {
   void dispose() {
     debugPrint('SettingsEmergencyController: dispose()');
     _disposed = true;
+    _amplitudeTicker?.cancel();
     try { _speech.cancel(); } catch (_) {}
     try { _audioPlayer.dispose(); } catch (_) {}
     super.dispose();
@@ -509,6 +519,7 @@ class SettingsEmergencyController extends ChangeNotifier {
     try {
       await _audioPlayer.stop();
       await _audioPlayer.play(AssetSource(path));
+      _startEnvelopeTicker(path);
       await completer.future.timeout(
         const Duration(seconds: 30),
         onTimeout: () => debugPrint('🔊 SE audio timeout: $path'),
@@ -516,7 +527,61 @@ class SettingsEmergencyController extends ChangeNotifier {
     } catch (e) {
       debugPrint('🔊 SE audio error ($path): $e');
     } finally {
+      _stopEnvelopeTicker();
       await sub.cancel();
+    }
+  }
+
+  /// Starts polling the audio player position at ~30 Hz and writes the
+  /// matching envelope value (with attack/release smoothing) into
+  /// `_speakingAmplitude` so the screen's orb equaliser tracks the
+  /// currently playing clip.
+  void _startEnvelopeTicker(String path) {
+    _amplitudeTicker?.cancel();
+    _currentEnvelope = SetupAudioEnvelopes.forPath(path);
+    _speakingAmplitude = 0.0;
+
+    if (_currentEnvelope == null) return;
+
+    const attack = 0.45;
+    const release = 0.10;
+
+    _amplitudeTicker = Timer.periodic(
+      const Duration(milliseconds: 33),
+      (_) async {
+        if (_disposed) return;
+        final envelope = _currentEnvelope;
+        if (envelope == null) return;
+        final pos = await _audioPlayer.getCurrentPosition();
+        if (pos == null) return;
+        final ms = pos.inMilliseconds;
+        final idx = ms ~/ SetupAudioEnvelopes.binMs;
+        double raw;
+        if (idx < 0 || idx >= envelope.length) {
+          raw = 0.0;
+        } else {
+          final t = (ms % SetupAudioEnvelopes.binMs) /
+              SetupAudioEnvelopes.binMs;
+          final a = envelope[idx];
+          final b = idx + 1 < envelope.length ? envelope[idx + 1] : a;
+          raw = a + (b - a) * t;
+        }
+        final coeff = raw > _speakingAmplitude ? attack : release;
+        _speakingAmplitude = (_speakingAmplitude +
+                (raw - _speakingAmplitude) * coeff)
+            .clamp(0.0, 1.0);
+        if (!_disposed) notifyListeners();
+      },
+    );
+  }
+
+  void _stopEnvelopeTicker() {
+    _amplitudeTicker?.cancel();
+    _amplitudeTicker = null;
+    _currentEnvelope = null;
+    if (_speakingAmplitude != 0.0) {
+      _speakingAmplitude = 0.0;
+      if (!_disposed) notifyListeners();
     }
   }
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:gp_hudai/app/app_routes.dart';
+import 'package:gp_hudai/core/constants/colors.dart';
+import 'package:gp_hudai/core/widgets/tap_feedback_overlay.dart';
 import 'package:gp_hudai/features/setup/setup_controller.dart';
 
 /// Setup screen — UI only.
@@ -114,7 +116,7 @@ class _SetupScreenState extends State<SetupScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F2350),
+      backgroundColor: AppColors.bg,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -140,8 +142,9 @@ class _SetupScreenState extends State<SetupScreen>
   // No status text, no instructions, no recognition chip — all spoken.
   // ───────────────────────────────────────────────────────────────────
   Widget _buildVoiceMode() {
-    return GestureDetector(
+    return TapFeedbackOverlay(
       key: const ValueKey('voice'),
+      child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _controller.onSingleTap,
       onDoubleTap: _controller.onDoubleTap,
@@ -164,10 +167,22 @@ class _SetupScreenState extends State<SetupScreen>
               builder: (_, __) {
                 final stage = _controller.stage;
                 final isSpeaking = stage == SetupStage.intro ||
-                    stage == SetupStage.confirming;
-                final t = (isSpeaking || _controller.isListening)
-                    ? _pulse.value
-                    : 0.0;
+                    stage == SetupStage.confirming ||
+                    stage == SetupStage.startingListen ||
+                    stage == SetupStage.processing ||
+                    stage == SetupStage.invalid ||
+                    stage == SetupStage.manual;
+                // While the app is speaking use the real envelope amplitude.
+                // While the user is listening use the pulse animation.
+                // Otherwise keep the orb still.
+                final double t;
+                if (isSpeaking) {
+                  t = _controller.speakingAmplitude;
+                } else if (_controller.isListening) {
+                  t = _pulse.value;
+                } else {
+                  t = 0.0;
+                }
                 return _MicOrb(
                   pulse: t,
                   listening: _controller.isListening,
@@ -193,6 +208,7 @@ class _SetupScreenState extends State<SetupScreen>
             const Spacer(),
           ],
         ),
+      ),
       ),
     );
   }
@@ -267,7 +283,7 @@ class _SetupScreenState extends State<SetupScreen>
               'يرجى إدخال رقم هاتف يدويًا',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: const Color(0xFFC8D8F0),
+                color: AppColors.bodyText,
                 fontSize: 14,
                 height: 1.5,
               ),
@@ -309,8 +325,8 @@ class _Background extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Color(0xFF0F2350),
-            Color(0xFF0F2350),
+            AppColors.bg,
+            AppColors.bg,
             Color(0xFF142D62),
             Color(0xFF1A3878),
           ],
@@ -332,7 +348,7 @@ class _AppName extends StatelessWidget {
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             fontSize: 17,
-            color: const Color(0xFFC8D8F0),
+            color: AppColors.bodyText,
             fontWeight: FontWeight.w400,
             height: 1.0,
           ),
@@ -452,9 +468,9 @@ class _NumberChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F2350).withOpacity(0.55),
+        color: AppColors.bg.withOpacity(0.55),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF8CBEFF).withOpacity(0.20)),
+        border: Border.all(color: AppColors.borderBase.withOpacity(0.20)),
       ),
       child: Text(
         text,
@@ -524,7 +540,7 @@ class _ProcessingDotsState extends State<_ProcessingDots>
                   shape: BoxShape.circle,
                   color: on
                       ? Colors.white
-                      : const Color(0xFF8CBEFF).withOpacity(0.20),
+                      : AppColors.borderBase.withOpacity(0.20),
                 ),
               ),
             );
@@ -548,9 +564,9 @@ class _GlassyTextField extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0F2350).withOpacity(0.55),
+        color: AppColors.bg.withOpacity(0.55),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF8CBEFF).withOpacity(0.20)),
+        border: Border.all(color: AppColors.borderBase.withOpacity(0.20)),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
@@ -558,7 +574,7 @@ class _GlassyTextField extends StatelessWidget {
           controller: controller,
           keyboardType: TextInputType.phone,
           textAlign: TextAlign.center,
-          cursorColor: const Color(0xFF6AB8FF),
+          cursorColor: AppColors.audioBars,
           validator: validator,
           style: const TextStyle(
             color: Colors.white,
@@ -574,7 +590,7 @@ class _GlassyTextField extends StatelessWidget {
             ),
             hintText: '+966',
             hintStyle: TextStyle(
-              color: const Color(0xFFC8D8F0).withOpacity(0.50),
+              color: AppColors.bodyText.withOpacity(0.50),
               fontSize: 18,
             ),
             errorStyle: const TextStyle(
@@ -599,14 +615,15 @@ class _GlowingSaveButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return TapFeedbackOverlay(
+      child: GestureDetector(
       onTap: saving ? null : onTap,
       child: Container(
         height: 60,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(40),
-          color: const Color(0xFF8CBEFF).withOpacity(0.10),
-          border: Border.all(color: const Color(0xFF8CBEFF).withOpacity(0.25)),
+          color: AppColors.borderBase.withOpacity(0.10),
+          border: Border.all(color: AppColors.borderBase.withOpacity(0.25)),
         ),
         child: Center(
           child: saving
@@ -628,6 +645,7 @@ class _GlowingSaveButton extends StatelessWidget {
                   ),
                 ),
         ),
+      ),
       ),
     );
   }

@@ -17,7 +17,8 @@ enum DemoLocationMode {
   lowAccuracy,
 }
 
-const DemoLocationMode kDemoLocationMode = DemoLocationMode.nearNamirah;
+// ignore: prefer_final_top_level
+DemoLocationMode kDemoLocationMode = DemoLocationMode.off;
 
 class LocationAudioPaths {
   const LocationAudioPaths._();
