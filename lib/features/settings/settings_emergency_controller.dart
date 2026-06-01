@@ -8,7 +8,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:gp_hudai/core/constants/setup_audio_envelopes.dart';
 import 'package:gp_hudai/core/storage/prefs.dart';
 import 'package:gp_hudai/core/utils/saudi_number_parser.dart'
-    show extractEmergencyDigits, isValidEmergencyNumber;
+    show arabicSpeechToDigits, extractEmergencyDigits, isValidEmergencyNumber;
 
 /// Audio assets — same physical MP3 files as the first-launch Setup flow.
 class _Audio {
@@ -368,7 +368,7 @@ class SettingsEmergencyController extends ChangeNotifier {
     if (_stage != SettingsEmergencyStage.listening) return;
 
     _setStage(SettingsEmergencyStage.processing);
-    final digits = _arabicSpeechToDigits(words);
+    final digits = arabicSpeechToDigits(words);
     _lastParsedDigits = digits;
     debugPrint('🎙️ SE parsed: "$digits" (len=${digits.length})');
 
@@ -584,68 +584,4 @@ class SettingsEmergencyController extends ChangeNotifier {
       if (!_disposed) notifyListeners();
     }
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Arabic speech → digits (0-9). Kept here so this controller has no source
-//  dependency on setup_controller.dart.
-// ─────────────────────────────────────────────────────────────────────────────
-
-String _arabicSpeechToDigits(String text) {
-  if (text.isEmpty) return '';
-
-  const eastern = '٠١٢٣٤٥٦٧٨٩';
-  const arabicWordToDigit = <String, String>{
-    'صفر': '0', 'سفر': '0', 'صفرا': '0', 'صفرة': '0',
-    'واحد': '1', 'وحد': '1', 'وحدة': '1', 'واحدة': '1',
-    'اثنان': '2', 'اثنين': '2', 'إثنان': '2', 'إثنين': '2',
-    'تنين': '2', 'اتنين': '2', 'إتنين': '2', 'ثنين': '2',
-    'ثلاثة': '3', 'ثلاث': '3', 'تلاتة': '3', 'تلاثة': '3', 'ثلاثه': '3',
-    'أربعة': '4', 'اربعة': '4', 'أربع': '4', 'اربع': '4', 'اربعه': '4',
-    'خمسة': '5', 'خمس': '5', 'خمسه': '5',
-    'ستة': '6', 'ست': '6', 'سته': '6', 'ستا': '6',
-    'سبعة': '7', 'سبع': '7', 'سبعه': '7',
-    'ثمانية': '8', 'ثماني': '8', 'تمانية': '8', 'تماني': '8', 'ثمانيه': '8',
-    'تسعة': '9', 'تسع': '9', 'تسعه': '9',
-  };
-
-  final buf  = StringBuffer();
-  final arab = RegExp(r'[؀-ۿ]');
-  int i = 0;
-  while (i < text.length) {
-    final ch = text[i];
-
-    if (RegExp(r'[0-9]').hasMatch(ch)) { buf.write(ch); i++; continue; }
-
-    final ei = eastern.indexOf(ch);
-    if (ei >= 0) { buf.write(ei); i++; continue; }
-
-    if (arab.hasMatch(ch)) {
-      var j = i;
-      while (j < text.length && arab.hasMatch(text[j])) { j++; }
-      final word   = text.substring(i, j);
-      final mapped = arabicWordToDigit[word];
-      if (mapped != null) buf.write(mapped);
-      i = j;
-      continue;
-    }
-
-    i++;
-  }
-
-  return _normalizeSaudiNumber(buf.toString());
-}
-
-String _normalizeSaudiNumber(String d) {
-  if (d.startsWith('00966')) {
-    d = '0${d.substring(5)}';
-  } else if (d.startsWith('966')) {
-    d = '0${d.substring(3)}';
-  }
-  if (d.length == 9 && d.startsWith('5')) d = '0$d';
-  if (d.length != 10) {
-    final m = RegExp(r'05\d{8}').firstMatch(d);
-    if (m != null) return m.group(0)!;
-  }
-  return d;
 }
