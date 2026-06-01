@@ -40,6 +40,8 @@ class _CameraAudio {
   static const String intro = 'audio/camera/camera_intro.mp3';
   static const String permissionDenied =
       'audio/camera/camera_permission_denied.mp3';
+  static const String emergencyConfirm =
+      'audio/camera/camera_emergency_confirm.mp3';
 }
 
 /// The brain of the camera screen.
@@ -701,9 +703,12 @@ class CameraController extends ChangeNotifier {
       return;
     }
 
-    // Second tap arrived within the window — place the call
+    // Second tap arrived within the window — confirm by voice, then call.
     _firstEmergencyTapMs = 0; // reset
-    debugPrint('☎️ Double-tap confirmed — calling emergency');
+    debugPrint('☎️ Double-tap confirmed — announcing then calling emergency');
+
+    // Speak the confirmation and wait for it to finish before dialing.
+    await _playAudio(_CameraAudio.emergencyConfirm);
 
     final success = await _phoneService.callEmergency();
     if (success) {
