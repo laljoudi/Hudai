@@ -160,6 +160,14 @@ flutter run
 | Wed Al-Alawi |
 | Amal Al-Harthi |
 
+### My role (Layan Aljoudi, assistant team lead)
+
+- Designed and built the full on-device AI pipeline: frame preprocessing, inference throttling, YOLOv8 inference through TensorFlow Lite, detection decoding, and scene mapping, plus the covered-lens check.
+- Built the GPS and geofencing feature that detects arrival in the Arafat area and triggers location guidance.
+- Built the main camera screen and integrated the camera, the AI model, and the app features into one flow.
+- Designed and published the user survey for blind users and ran user interviews with a teammate.
+- Ran integration, performance, and usability testing.
+
 ---
 
 ## License
